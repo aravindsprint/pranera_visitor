@@ -209,6 +209,22 @@ def _checkin_time(client_time):
 	return min(t, now)
 
 
+def _unique_idx():
+	"""Visitor Data has custom `idx` and `id` columns (Data, UNIQUE) added for
+	the old Node sync, which shadow Frappe's own idx. Frappe would insert
+	idx = 0 → "idx must be unique" on the second row. The Node app sent
+	unix-seconds + SQLite rowid; microseconds since epoch is unique enough
+	here and stays numeric like the existing values."""
+	import time
+
+	for _attempt in range(5):
+		candidate = str(time.time_ns() // 1000)
+		if not frappe.db.exists(DT, {"idx": candidate}):
+			return candidate
+		time.sleep(0.001)
+	return f"{time.time_ns() // 1000}{frappe.generate_hash(length=4)}"
+
+
 @frappe.whitelist(methods=["POST"])
 def check_in(data, client_id=None):
 	"""Create a Visitor Data row (draft = inside). Idempotent on client_id, so
@@ -257,7 +273,8 @@ def check_in(data, client_id=None):
 		"state": state,
 		"city": city,
 		"territory": link_value_or_none(DT, "territory", zone),
-		"id": client_id,
+		"id": client_id or f"{ten}-{now_datetime().strftime('%Y%m%d%H%M%S')}",
+		"idx": _unique_idx(),
 		"checkin_source": "Visitor App",
 		"checked_in_by": frappe.session.user,
 	})
