@@ -34,6 +34,9 @@
 
       <div class="card">
         <div v-if="error" class="alert alert-error">⚠️ {{ error }}</div>
+        <div v-if="missingFields.length" class="alert alert-warning">
+          ⚠️ This site has no security scan fields ({{ missingFields.join(', ') }}), so every document shows as not passed.
+        </div>
         <div v-if="loading" class="loading-center"><div class="spinner"></div></div>
         <div v-else-if="!currentRows.length" class="empty-state">
           <div class="empty-state__icon">🛡️</div><div class="empty-state__title">Nothing in this range</div>
@@ -86,6 +89,7 @@ const scannedFrom = ref('')
 const status = ref('')
 const loading = ref(false)
 const error = ref('')
+const missingFields = ref([])
 
 const currentRows = computed(() => (data.value[tab.value] || []).filter(r =>
   !status.value || (status.value === 'Yes' ? r.security_passed === 'Yes' : r.security_passed !== 'Yes')))
@@ -103,6 +107,7 @@ async function load() {
     data.value = { sales_invoices: res.sales_invoices, stock_entries: res.stock_entries }
     summary.value = res.summary
     scanOptions.value = res.scanned_from_options || []
+    missingFields.value = res.missing_fields || []
   } catch (err) {
     error.value = err.network ? 'Offline — reconnect to load the report' : err.message
   } finally {

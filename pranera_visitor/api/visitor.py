@@ -395,19 +395,32 @@ def get_security_scan_report(from_date=None, to_date=None, scanned_from=None):
 	server on port 3000."""
 	_require_gate()
 	f, t = _date_range(from_date, to_date)
-	common = {"docstatus": 1, "posting_date": ["between", [f, t]]}
-	if scanned_from:
-		common["security_scanned_from"] = scanned_from
-	fields = ["name", "posting_date", "security_passed", "security_scanned_date", "security_scanned_from"]
+	scan_fields = ("security_passed", "security_scanned_date", "security_scanned_from")
+	missing = []
 
-	invoices = frappe.get_all(
-		"Sales Invoice", common, fields + ["customer_name as party", "grand_total"],
-		order_by="posting_date desc, name desc", limit=5000,
-	)
-	stock = frappe.get_all(
-		"Stock Entry", common, fields + ["stock_entry_type as party", "total_outgoing_value as grand_total"],
-		order_by="posting_date desc, name desc", limit=5000,
-	)
+	def fetch(doctype, extra):
+		# The security_* custom fields exist on erp.pranera.in but not on every
+		# site (e.g. a local dev copy). Select only what exists so the report
+		# degrades to "no scan data" instead of a SQL error.
+		meta = frappe.get_meta(doctype)
+		have = [fn for fn in scan_fields if meta.has_field(fn)]
+		missing.extend(f"{doctype}.{fn}" for fn in scan_fields if fn not in have)
+		filters = {"docstatus": 1, "posting_date": ["between", [f, t]]}
+		if scanned_from:
+			if "security_scanned_from" not in have:
+				return []
+			filters["security_scanned_from"] = scanned_from
+		rows = frappe.get_all(
+			doctype, filters, ["name", "posting_date", *have, *extra],
+			order_by="posting_date desc, name desc", limit=5000,
+		)
+		for r in rows:
+			for fn in scan_fields:
+				r.setdefault(fn, None)
+		return rows
+
+	invoices = fetch("Sales Invoice", ["customer_name as party", "grand_total"])
+	stock = fetch("Stock Entry", ["stock_entry_type as party", "total_outgoing_value as grand_total"])
 
 	def summary(rows):
 		passed = sum(1 for r in rows if r.security_passed == "Yes")
@@ -422,4 +435,5 @@ def get_security_scan_report(from_date=None, to_date=None, scanned_from=None):
 		"stock_entries": stock,
 		"summary": {"sales_invoices": summary(invoices), "stock_entries": summary(stock)},
 		"scanned_from_options": [o for o in scanned_from_options if o],
+		"missing_fields": missing,
 	}
