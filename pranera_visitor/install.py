@@ -62,6 +62,24 @@ def apply_custom_fields():
 		# Textiles And Garments not installed on this site — nothing to extend.
 		return
 	create_custom_fields(get_custom_fields(), update=True)
+	show_mobile_as_text()
+
+
+def show_mobile_as_text():
+	"""Visitor Data.mobile_no is a Phone field. Desk's Phone control renders
+	'+91-XXXXXXXXXX' (the format both the Node app and this app store) as an
+	empty box with a country picker. Show it as plain Data instead — same
+	varchar column, stored values untouched. Property Setter, so the
+	Textiles And Garments doctype JSON is not modified."""
+	from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+
+	df = frappe.get_meta("Visitor Data").get_field("mobile_no")
+	if df and df.fieldtype != "Data":
+		make_property_setter(
+			"Visitor Data", "mobile_no", "fieldtype", "Data", "Select",
+			validate_fields_for_doctype=False,
+		)
+		frappe.clear_cache(doctype="Visitor Data")
 
 
 def after_install():
