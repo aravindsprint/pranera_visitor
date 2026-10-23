@@ -274,7 +274,8 @@ def check_in(data, client_id=None):
 		"checked_in_by": frappe.session.user,
 	})
 	doc.insert(ignore_permissions=True)
-	crm.enqueue_lead(doc.name)
+	if crm.wants_lead(department):
+		crm.enqueue_lead(doc.name)
 	return {"status": "checked_in", "visitor": _row(doc.as_dict())}
 
 

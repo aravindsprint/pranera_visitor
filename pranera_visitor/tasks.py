@@ -2,7 +2,7 @@
 import frappe
 from frappe.utils import add_to_date, cint, now_datetime
 
-from pranera_visitor.crm import MAX_LEAD_ATTEMPTS, enqueue_lead
+from pranera_visitor.crm import LEAD_DEPARTMENTS, MAX_LEAD_ATTEMPTS, enqueue_lead
 from pranera_visitor.utils import duration_since, today_start
 from pranera_visitor.visitor_module.doctype.visitor_settings.visitor_settings import (
 	get_settings,
@@ -73,6 +73,7 @@ def retry_missing_crm_leads():
 		"Visitor Data",
 		{
 			"checkin_source": "Visitor App",
+			"department": ["in", list(LEAD_DEPARTMENTS)],
 			"date": [">=", today_start()],
 			"creation": ["<", add_to_date(now_datetime(), minutes=-3)],
 			"crm_lead": ["is", "not set"],

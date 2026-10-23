@@ -68,7 +68,27 @@ def remove_obsolete_fields():
 		frappe.delete_doc("Custom Field", name, ignore_permissions=True, force=True)
 
 
+def get_crm_lead_fields():
+	# Company name typed at the gate. Organization (mandatory) stays empty
+	# until sales confirms the real organization.
+	return {
+		"CRM Lead": [
+			{
+				"fieldname": "custom_temp_organization",
+				"label": "Temp Organization",
+				"fieldtype": "Data",
+				"insert_after": "organization",
+				"in_standard_filter": 1,
+				"module": MODULE,
+				"description": "Company name entered at the gate (Visitor App). Copy the confirmed name into Organization.",
+			}
+		]
+	}
+
+
 def apply_custom_fields():
+	if frappe.db.exists("DocType", "CRM Lead"):
+		create_custom_fields(get_crm_lead_fields(), update=True)
 	if not frappe.db.exists("DocType", "Visitor Data"):
 		# Textiles And Garments not installed on this site — nothing to extend.
 		return

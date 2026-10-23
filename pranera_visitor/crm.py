@@ -13,6 +13,14 @@ from pranera_visitor.visitor_module.doctype.visitor_settings.visitor_settings im
 
 MAX_LEAD_ATTEMPTS = 3
 
+# Only these check-ins become CRM Leads. "Others" (couriers, vendors,
+# interviews, service visits…) stay as Visitor Data only.
+LEAD_DEPARTMENTS = ("Fabric", "Garments")
+
+
+def wants_lead(department):
+	return (department or "").strip().lower() in {d.lower() for d in LEAD_DEPARTMENTS}
+
 
 # ── Territory ────────────────────────────────────────────────────────────────
 def place_key(text):
@@ -264,7 +272,7 @@ def create_lead_for_visitor(visitor_name):
 	# here, and the second one sees crm_lead already set.
 	frappe.db.sql("select name from `tabVisitor Data` where name=%s for update", visitor_name)
 	vd = frappe.get_doc("Visitor Data", visitor_name)
-	if vd.get("crm_lead"):
+	if vd.get("crm_lead") or not wants_lead(vd.department):
 		return
 	ten = normalize_mobile(vd.mobile_no)
 	first_name = (vd.name1 or "").strip().upper()
@@ -299,7 +307,6 @@ def _insert_lead(vd, s, ten, first_name):
 		"doctype": "CRM Lead",
 		"first_name": first_name,
 		"mobile_no": vd.mobile_no,
-		"organization": (vd.company_name or "").strip().upper(),
 		"status": "New",
 		"source": link_value_or_none("CRM Lead", "source", source),
 		"lead_owner": owner,
@@ -308,6 +315,19 @@ def _insert_lead(vd, s, ten, first_name):
 		"email": f"{ten}@noemail.local",
 	})
 	meta = frappe.get_meta("CRM Lead")
+	# The company name typed at the gate is unverified, so it goes into
+	# Temp Organization only. Organization stays empty until sales confirms
+	# the real one. Organization is mandatory on erp.pranera.in (Property
+	# Setter), so the lead is created without the mandatory check; Desk still
+	# asks for it on the next manual save, which is the intended prompt.
+	company = (vd.company_name or "").strip().upper()
+	if meta.has_field("custom_temp_organization"):
+		lead.custom_temp_organization = company
+		lead.flags.ignore_mandatory = True
+	else:
+		# Field missing (migrate not run yet) — keep the old behaviour rather
+		# than lose the company name.
+		lead.organization = company
 	if meta.has_field("custom_location"):
 		lead.custom_location = vd.location
 	if meta.has_field("custom_lead_temperature"):
