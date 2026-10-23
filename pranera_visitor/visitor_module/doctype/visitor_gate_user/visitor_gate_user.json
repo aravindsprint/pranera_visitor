@@ -1,0 +1,52 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-23 00:00:00.000000",
+ "modified": "2026-10-23 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "module": "Visitor Module",
+ "name": "Visitor Gate User",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "editable_grid": 1,
+ "field_order": [
+  "user",
+  "location",
+  "can_view_all_locations"
+ ],
+ "fields": [
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "location",
+   "fieldtype": "Select",
+   "label": "Location",
+   "options": "HO\nJV",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "can_view_all_locations",
+   "fieldtype": "Check",
+   "label": "Can View All Locations",
+   "default": "0",
+   "in_list_view": 1,
+   "description": "Sees active visitors of every gate and can switch location (like the old 'Aravind' login)."
+  }
+ ],
+ "issingle": 0,
+ "istable": 1,
+ "links": [],
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
+}

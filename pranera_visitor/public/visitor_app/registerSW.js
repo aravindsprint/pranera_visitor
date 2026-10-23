@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/assets/pranera_visitor/visitor_app/sw.js', { scope: '/assets/pranera_visitor/visitor_app/' })})}

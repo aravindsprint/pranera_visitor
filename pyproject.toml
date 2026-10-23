@@ -1,0 +1,20 @@
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "pranera_visitor"
+version = "1.0.0"
+description = "Pranera Visitor — gate visitor check-in / check-out app for ERPNext"
+requires-python = ">=3.10"
+readme = "README.md"
+license = { text = "MIT" }
+dependencies = [
+    # "frappe~=15.0.0" # Installed and managed by bench.
+]
+
+[tool.flit.module]
+name = "pranera_visitor"
+
+[tool.bench.frappe-dependencies]
+frappe = ">=15.0.0,<16.0.0"

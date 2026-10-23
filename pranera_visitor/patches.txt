@@ -1,0 +1,7 @@
+[pre_model_sync]
+
+[post_model_sync]
+# Seeds Visitor Settings with the rules that were hardcoded in the Node
+# server (territory heads, department → lead owner, alert recipients, the
+# dropdown lists). Runs once; edit the values afterwards in Desk.
+pranera_visitor.patches.v1_0.seed_visitor_settings

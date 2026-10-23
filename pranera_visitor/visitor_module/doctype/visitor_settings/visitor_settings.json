@@ -1,0 +1,245 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-23 00:00:00.000000",
+ "modified": "2026-10-23 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "module": "Visitor Module",
+ "name": "Visitor Settings",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "editable_grid": 0,
+ "field_order": [
+  "gate_section",
+  "gate_users",
+  "lead_section",
+  "create_crm_lead",
+  "lead_temperature",
+  "lead_cb",
+  "kongu_sales_person",
+  "rotn_sales_person",
+  "roi_sales_person",
+  "territory_section",
+  "kongu_cities",
+  "territory_cb",
+  "rotn_states",
+  "department_section",
+  "department_rules",
+  "whatsapp_section",
+  "enable_whatsapp",
+  "whatsapp_phone_id",
+  "whatsapp_api_version",
+  "whatsapp_cb",
+  "whatsapp_template",
+  "whatsapp_token",
+  "long_stay_section",
+  "enable_long_stay_alert",
+  "long_stay_minutes",
+  "long_stay_cb",
+  "long_stay_recipients",
+  "options_section",
+  "remarks_options",
+  "options_cb",
+  "commercial_name_options",
+  "color_options"
+ ],
+ "fields": [
+  {
+   "fieldname": "gate_section",
+   "fieldtype": "Section Break",
+   "label": "Gates"
+  },
+  {
+   "fieldname": "gate_users",
+   "fieldtype": "Table",
+   "label": "Gate Users",
+   "options": "Visitor Gate User",
+   "description": "Which gate each Visitor App user checks visitors in at. Replaces the old 'Security = HO, everyone else = JV' username rule."
+  },
+  {
+   "fieldname": "lead_section",
+   "fieldtype": "Section Break",
+   "label": "CRM Lead Creation"
+  },
+  {
+   "fieldname": "create_crm_lead",
+   "fieldtype": "Check",
+   "label": "Create CRM Lead on Check-in",
+   "default": "1"
+  },
+  {
+   "fieldname": "lead_temperature",
+   "fieldtype": "Data",
+   "label": "Lead Temperature",
+   "default": "Hot"
+  },
+  {
+   "fieldname": "lead_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "kongu_sales_person",
+   "fieldtype": "Link",
+   "label": "KONGU Head",
+   "options": "Sales Person"
+  },
+  {
+   "fieldname": "rotn_sales_person",
+   "fieldtype": "Link",
+   "label": "ROTN + Kerala Head",
+   "options": "Sales Person"
+  },
+  {
+   "fieldname": "roi_sales_person",
+   "fieldtype": "Link",
+   "label": "ROI Head",
+   "options": "Sales Person"
+  },
+  {
+   "fieldname": "territory_section",
+   "fieldtype": "Section Break",
+   "label": "Territory Zones"
+  },
+  {
+   "fieldname": "kongu_cities",
+   "fieldtype": "Small Text",
+   "label": "KONGU Cities",
+   "description": "One per line. A Tamil Nadu visitor from one of these cities is KONGU."
+  },
+  {
+   "fieldname": "territory_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "rotn_states",
+   "fieldtype": "Small Text",
+   "label": "ROTN States",
+   "description": "One per line. Any other city in these states is ROTN. Everything else is ROI."
+  },
+  {
+   "fieldname": "department_section",
+   "fieldtype": "Section Break",
+   "label": "Department Rules",
+   "description": "Used only when the visitor isn't already linked to a Customer with a sales person."
+  },
+  {
+   "fieldname": "department_rules",
+   "fieldtype": "Table",
+   "label": "Department Rules",
+   "options": "Visitor Department Rule"
+  },
+  {
+   "fieldname": "whatsapp_section",
+   "fieldtype": "Section Break",
+   "label": "WhatsApp (Meta Cloud API)",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "enable_whatsapp",
+   "fieldtype": "Check",
+   "label": "Enable WhatsApp Alerts",
+   "default": "0"
+  },
+  {
+   "fieldname": "whatsapp_phone_id",
+   "fieldtype": "Data",
+   "label": "Phone Number ID"
+  },
+  {
+   "fieldname": "whatsapp_api_version",
+   "fieldtype": "Data",
+   "label": "Graph API Version",
+   "default": "v22.0"
+  },
+  {
+   "fieldname": "whatsapp_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "whatsapp_template",
+   "fieldtype": "Data",
+   "label": "Template Name",
+   "default": "visitor_checkin_unassigned"
+  },
+  {
+   "fieldname": "whatsapp_token",
+   "fieldtype": "Password",
+   "label": "Access Token"
+  },
+  {
+   "fieldname": "long_stay_section",
+   "fieldtype": "Section Break",
+   "label": "Long Stay Alert"
+  },
+  {
+   "fieldname": "enable_long_stay_alert",
+   "fieldtype": "Check",
+   "label": "Enable Long Stay Email",
+   "default": "1"
+  },
+  {
+   "fieldname": "long_stay_minutes",
+   "fieldtype": "Int",
+   "label": "Alert After (Minutes)",
+   "default": "60"
+  },
+  {
+   "fieldname": "long_stay_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "long_stay_recipients",
+   "fieldtype": "Small Text",
+   "label": "Recipients",
+   "description": "Comma or newline separated email ids"
+  },
+  {
+   "fieldname": "options_section",
+   "fieldtype": "Section Break",
+   "label": "Dropdown Options",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "remarks_options",
+   "fieldtype": "Small Text",
+   "label": "Remarks Options",
+   "description": "One per line"
+  },
+  {
+   "fieldname": "options_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "commercial_name_options",
+   "fieldtype": "Small Text",
+   "label": "Commercial Name Options",
+   "description": "One per line"
+  },
+  {
+   "fieldname": "color_options",
+   "fieldtype": "Small Text",
+   "label": "Color Options",
+   "description": "One per line"
+  }
+ ],
+ "issingle": 1,
+ "istable": 0,
+ "links": [],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "print": 1,
+   "email": 1,
+   "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
