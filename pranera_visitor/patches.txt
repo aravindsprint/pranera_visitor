@@ -5,3 +5,5 @@
 # server (territory heads, department → lead owner, alert recipients, the
 # dropdown lists). Runs once; edit the values afterwards in Desk.
 pranera_visitor.patches.v1_0.seed_visitor_settings
+# Adds KONGU towns the old list missed (Avinashi, Kotagiri, Palladam, …).
+pranera_visitor.patches.v1_1.add_kongu_towns

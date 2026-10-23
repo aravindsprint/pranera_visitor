@@ -2,7 +2,7 @@
  "actions": [],
  "allow_rename": 0,
  "creation": "2026-10-23 00:00:00.000000",
- "modified": "2026-10-23 00:00:00.000000",
+ "modified": "2026-10-23 16:30:00.000000",
  "doctype": "DocType",
  "engine": "InnoDB",
  "module": "Visitor Module",
@@ -39,10 +39,7 @@
   "long_stay_cb",
   "long_stay_recipients",
   "options_section",
-  "remarks_options",
-  "options_cb",
-  "commercial_name_options",
-  "color_options"
+  "remarks_options"
  ],
  "fields": [
   {
@@ -105,7 +102,7 @@
    "fieldname": "kongu_cities",
    "fieldtype": "Small Text",
    "label": "KONGU Cities",
-   "description": "One per line. A Tamil Nadu visitor from one of these cities is KONGU."
+   "description": "One per line. A Tamil Nadu visitor from one of these cities is KONGU. Spelling variants (Tirupur / Thirupur / Tiruppur) match automatically."
   },
   {
    "fieldname": "territory_cb",
@@ -204,22 +201,6 @@
    "fieldname": "remarks_options",
    "fieldtype": "Small Text",
    "label": "Remarks Options",
-   "description": "One per line"
-  },
-  {
-   "fieldname": "options_cb",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "commercial_name_options",
-   "fieldtype": "Small Text",
-   "label": "Commercial Name Options",
-   "description": "One per line"
-  },
-  {
-   "fieldname": "color_options",
-   "fieldtype": "Small Text",
-   "label": "Color Options",
    "description": "One per line"
   }
  ],

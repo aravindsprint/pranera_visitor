@@ -58,6 +58,8 @@
                 <td>{{ r.location }}</td>
                 <td>{{ r.department }}</td>
                 <td>{{ r.city }}</td>
+                <td>{{ r.territory }}</td>
+                <td>{{ r.sales_person }}</td>
                 <td class="nowrap">
                   <span v-if="r.docstatus === 0 && r.out !== 'Yes'" class="badge badge-warning">Inside</span>
                   <span v-else>{{ r.duration || '' }}</span>
@@ -111,7 +113,8 @@ const sort = reactive({ key: 'date', dir: -1 })
 const cols = [
   { key: 'date', label: 'Date' }, { key: 'name1', label: 'Visitor' }, { key: 'company_name', label: 'Company' },
   { key: 'mobile_10', label: 'Mobile' }, { key: 'location', label: 'Gate' }, { key: 'department', label: 'Dept' },
-  { key: 'city', label: 'City' }, { key: 'duration', label: 'Duration' }, { key: 'crm_lead', label: 'CRM Lead' },
+  { key: 'city', label: 'City' }, { key: 'territory', label: 'Territory' }, { key: 'sales_person', label: 'Sales Person' },
+  { key: 'duration', label: 'Duration' }, { key: 'crm_lead', label: 'CRM Lead' },
 ]
 const detailFields = [
   { k: 'date', l: 'Check-in', f: r => fmtDateTime(r.date) },
@@ -119,9 +122,7 @@ const detailFields = [
   { k: 'duration', l: 'Duration' }, { k: 'company_name', l: 'Company' }, { k: 'mobile_no', l: 'Mobile' },
   { k: 'location', l: 'Gate' }, { k: 'department', l: 'Department' }, { k: 'state', l: 'State' }, { k: 'city', l: 'City' },
   { k: 'territory', l: 'Territory' }, { k: 'sales_person', l: 'Sales Person' }, { k: 'customer', l: 'Customer' },
-  { k: 'customer_type', l: 'Customer Type' }, { k: 'customer_group', l: 'Customer Group' }, { k: 'source', l: 'Source' },
-  { k: 'commercial_name', l: 'Commercial Name' }, { k: 'color', l: 'Color' }, { k: 'sample_qty', l: 'Sample Qty' },
-  { k: 'bulk_qty', l: 'Bulk Qty' }, { k: 'remarks', l: 'Remarks' }, { k: 'notes', l: 'Notes' }, { k: 'crm_lead', l: 'CRM Lead' },
+  { k: 'remarks', l: 'Remarks' }, { k: 'notes', l: 'Notes' }, { k: 'crm_lead', l: 'CRM Lead' },
 ]
 
 const filtered = computed(() => {
@@ -172,9 +173,7 @@ function exportCSV() {
     { label: 'Duration', key: 'duration' }, { label: 'Visitor', key: 'name1' }, { label: 'Company', key: 'company_name' },
     { label: 'Mobile', key: 'mobile_10' }, { label: 'Gate', key: 'location' }, { label: 'Department', key: 'department' },
     { label: 'State', key: 'state' }, { label: 'City', key: 'city' }, { label: 'Territory', key: 'territory' },
-    { label: 'Sales Person', key: 'sales_person' }, { label: 'Customer', key: 'customer' }, { label: 'Customer Group', key: 'customer_group' },
-    { label: 'Source', key: 'source' }, { label: 'Commercial Name', key: 'commercial_name' }, { label: 'Color', key: 'color' },
-    { label: 'Sample Qty', key: 'sample_qty' }, { label: 'Bulk Qty', key: 'bulk_qty' }, { label: 'Remarks', key: 'remarks' },
+    { label: 'Sales Person', key: 'sales_person' }, { label: 'Customer', key: 'customer' }, { label: 'Remarks', key: 'remarks' },
     { label: 'Notes', key: 'notes' }, { label: 'CRM Lead', key: 'crm_lead' },
   ], filtered.value)
 }

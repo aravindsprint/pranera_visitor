@@ -1,11 +1,16 @@
 """Custom fields this app adds to Visitor Data (owned by Textiles And Garments).
 
-The old Node server sent customer_type, customer_group, source, commercial
-name, color, sample/bulk qty, remarks and notes to ERPNext, but Visitor Data
-never had those fields, so ERPNext silently dropped them. They are added here.
+Only what the app actually uses: follow-up remarks/notes, the linked
+Customer and CRM Lead, and the app's own bookkeeping.
 
-Everything is allow_on_submit so the follow-up fields can still be edited
-after the visitor has exited (exit submits the document).
+The old Node server also sent customer_type, customer_group, source,
+commercial name, color and sample/bulk qty, but Visitor Data on
+erp.pranera.in never had those fields (ERPNext dropped them), so no data
+exists for them. v1.0 briefly added them as a "Customer Details" section;
+OBSOLETE_FIELDS removes those Custom Fields again on migrate.
+
+Everything is allow_on_submit so follow-up fields can still be edited after
+the visitor has exited (exit submits the document).
 """
 import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
@@ -28,19 +33,7 @@ def _f(fieldname, label, fieldtype, insert_after, **kw):
 def get_custom_fields():
 	return {
 		"Visitor Data": [
-			_f("visitor_customer_section", "Customer Details", "Section Break", "territory", collapsible=1),
-			_f("customer_type", "Customer Type", "Select", "visitor_customer_section", options="\nExisting\nNew"),
-			_f("erpnext_customer_type", "ERPNext Customer Type", "Select", "customer_type",
-			   options="\nCompany\nIndividual\nPartnership"),
-			_f("customer_group", "Customer Group", "Link", "erpnext_customer_type", options="Customer Group"),
-			_f("source", "Source", "Select", "customer_group",
-			   options="\nWalk-In\nInbound Call\nExpo\nOutbound Call"),
-			_f("visitor_customer_cb", None, "Column Break", "source"),
-			_f("commercial_name", "Commercial Name", "Data", "visitor_customer_cb"),
-			_f("color", "Color", "Data", "commercial_name"),
-			_f("sample_qty", "Sample Qty", "Float", "color"),
-			_f("bulk_qty", "Bulk Qty", "Float", "sample_qty"),
-			_f("visitor_followup_section", "Follow-up", "Section Break", "bulk_qty", collapsible=1),
+			_f("visitor_followup_section", "Follow-up", "Section Break", "territory", collapsible=1),
 			_f("remarks", "Remarks", "Data", "visitor_followup_section"),
 			_f("notes", "Notes", "Small Text", "remarks"),
 			_f("visitor_followup_cb", None, "Column Break", "notes"),
@@ -57,12 +50,32 @@ def get_custom_fields():
 	}
 
 
+OBSOLETE_FIELDS = (
+	"visitor_customer_section", "customer_type", "erpnext_customer_type", "customer_group",
+	"source", "visitor_customer_cb", "commercial_name", "color", "sample_qty", "bulk_qty",
+)
+
+
+def remove_obsolete_fields():
+	"""Drop the v1.0 "Customer Details" Custom Fields. Only rows this app
+	created (module = Visitor Module) are touched. The DB columns stay —
+	Frappe never drops columns on Custom Field delete — so nothing is lost."""
+	for name in frappe.get_all(
+		"Custom Field",
+		{"dt": "Visitor Data", "module": MODULE, "fieldname": ["in", OBSOLETE_FIELDS]},
+		pluck="name",
+	):
+		frappe.delete_doc("Custom Field", name, ignore_permissions=True, force=True)
+
+
 def apply_custom_fields():
 	if not frappe.db.exists("DocType", "Visitor Data"):
 		# Textiles And Garments not installed on this site — nothing to extend.
 		return
+	remove_obsolete_fields()
 	create_custom_fields(get_custom_fields(), update=True)
 	show_mobile_as_text()
+	frappe.clear_cache(doctype="Visitor Data")
 
 
 def show_mobile_as_text():

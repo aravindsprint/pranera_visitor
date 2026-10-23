@@ -9,21 +9,12 @@ Not seeded on purpose:
 """
 import frappe
 
-KONGU_CITIES = ["Coimbatore", "Erode", "Tiruppur", "Salem", "Namakkal", "Karur"]
+from pranera_visitor.patches.v1_1.add_kongu_towns import KONGU_CITIES
 ROTN_STATES = ["Tamil Nadu", "Kerala"]
 
 REMARKS = [
 	"Swatch Book Given", "Sample Ordered", "Sample Purchased", "Order Confirmed",
 	"Unqualified", "Awaiting Customer Confirmation", "Swatch Given",
-]
-COMMERCIAL_NAMES = [
-	"2TF 240", "2TF ECO 220", "3TF 340", "3TF BRUSHED 280", "4 WAY", "4T PIQUE 250",
-	"ADVANCE DOT KNIT 180", "ADVANCE KNIT 150", "ADVANCE KNIT 170", "AIRLITE 160",
-	"AIRLITE 180", "AIRLITE 200", "AIRLITE 220 Z", "AIRTEX 110", "AIRTEX 200", "Others",
-]
-COLORS = [
-	"BEIGE MELANGE", "BLACK MELANGE", "CAPRI BLUE MELANGE", "CARBON GREY MELANGE",
-	"Customized Color",
 ]
 RECIPIENTS = [
 	"ba@praneraservices.com", "textiles@praneraservices.com", "siva@praneraservices.com",
@@ -72,8 +63,6 @@ def execute():
 	s.long_stay_recipients = "\n".join(RECIPIENTS)
 
 	s.remarks_options = "\n".join(REMARKS)
-	s.commercial_name_options = "\n".join(COMMERCIAL_NAMES)
-	s.color_options = "\n".join(COLORS)
 
 	s.flags.ignore_mandatory = True
 	s.save(ignore_permissions=True)

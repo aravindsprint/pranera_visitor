@@ -10,20 +10,23 @@
       </div>
 
       <!-- Customer lookup (port of lookupCustomer / createCustomer) -->
-      <div class="em-cust" :class="`em-cust--${cust.status || 'loading'}`">
+      <div class="em-cust" :class="`em-cust--${custLoading ? 'loading' : (cust.status || 'not_found')}`">
         <template v-if="custLoading"><span class="spinner spinner--sm"></span> Looking up customer…</template>
         <template v-else-if="cust.status === 'found'">
           ✅ Customer <strong>{{ cust.customer_name }}</strong>
           <span v-if="cust.matched_by === 'company_name'"> (matched by company name — a contact will be linked on save)</span>
           <div v-if="cust.sales_person" class="em-cust__sp">Sales person: {{ cust.sales_person }}</div>
         </template>
-        <template v-else-if="cust.status === 'contact_only'">
-          👤 Contact <strong>{{ cust.full_name }}</strong> exists but isn't linked to a customer.
-          <button class="btn btn-outline em-cust__btn" :disabled="creating" @click="doCreateCustomer">{{ creating ? 'Creating…' : 'Create Customer' }}</button>
-        </template>
         <template v-else>
-          ➕ Not an existing customer.
-          <button class="btn btn-outline em-cust__btn" :disabled="creating" @click="doCreateCustomer">{{ creating ? 'Creating…' : 'Create Customer' }}</button>
+          <div v-if="cust.status === 'contact_only'">👤 Contact <strong>{{ cust.full_name }}</strong> exists but isn't linked to a customer.</div>
+          <div v-else>➕ Not an existing customer.</div>
+          <div class="em-newcust">
+            <select v-model="newCust.erpnext_customer_type" class="form-input" title="Customer type">
+              <option v-for="o in opt.erpnext_customer_types" :key="o">{{ o }}</option>
+            </select>
+            <AutoComplete v-model="newCust.customer_group" :options="boot.customer_groups || []" placeholder="Group" />
+            <button class="btn btn-outline" :disabled="creating" @click="doCreateCustomer">{{ creating ? 'Creating…' : 'Create Customer' }}</button>
+          </div>
         </template>
       </div>
 
@@ -33,40 +36,8 @@
           <AutoComplete v-model="f.sales_person" :options="boot.sales_persons || []" placeholder="Select" />
         </div>
         <div class="form-group">
-          <label class="form-label">Customer Type</label>
-          <select v-model="f.customer_type" class="form-input"><option value=""></option><option v-for="o in opt.customer_types" :key="o">{{ o }}</option></select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">ERPNext Customer Type</label>
-          <select v-model="f.erpnext_customer_type" class="form-input"><option value=""></option><option v-for="o in opt.erpnext_customer_types" :key="o">{{ o }}</option></select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Customer Group</label>
-          <AutoComplete v-model="f.customer_group" :options="boot.customer_groups || []" placeholder="Select" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Source</label>
-          <select v-model="f.source" class="form-input"><option value=""></option><option v-for="o in opt.sources" :key="o">{{ o }}</option></select>
-        </div>
-        <div class="form-group">
           <label class="form-label">Territory</label>
           <AutoComplete v-model="f.territory" :options="boot.territories || []" placeholder="Select" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Commercial Name</label>
-          <AutoComplete v-model="f.commercial_name" :options="opt.commercial_names || []" placeholder="Select or type" allow-custom />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Color</label>
-          <AutoComplete v-model="f.color" :options="opt.colors || []" placeholder="Select or type" allow-custom />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Sample Qty</label>
-          <input v-model="f.sample_qty" class="form-input" type="number" inputmode="decimal" min="0" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Bulk Qty</label>
-          <input v-model="f.bulk_qty" class="form-input" type="number" inputmode="decimal" min="0" />
         </div>
       </div>
       <div class="form-group">
@@ -101,11 +72,12 @@ const auth = useAuthStore()
 const boot = computed(() => auth.boot || {})
 const opt  = computed(() => boot.value.options || {})
 
-const FIELDS = ['sales_person', 'customer_type', 'erpnext_customer_type', 'customer_group', 'source',
-  'territory', 'commercial_name', 'color', 'sample_qty', 'bulk_qty', 'remarks', 'notes']
+const FIELDS = ['sales_person', 'territory', 'remarks', 'notes']
 const f = reactive(Object.fromEntries(FIELDS.map(k => [k, props.visitor[k] ?? ''])))
 
 const cust = ref({})
+// Used only if a new Customer is created from here — not stored on the visit.
+const newCust = reactive({ erpnext_customer_type: 'Company', customer_group: '' })
 const custLoading = ref(true)
 const creating = ref(false)
 const saving = ref(false)
@@ -116,10 +88,8 @@ onMounted(async () => {
     cust.value = await lookupCustomer(props.visitor.name)
     // Prefill from the matched customer when the visitor row is still empty.
     if (cust.value.status === 'found') {
-      if (!f.customer_group && cust.value.customer_group) f.customer_group = cust.value.customer_group
       if (!f.territory && cust.value.territory) f.territory = cust.value.territory
       if (!f.sales_person && cust.value.sales_person) f.sales_person = cust.value.sales_person
-      if (!f.customer_type) f.customer_type = 'Existing'
     }
   } catch (err) {
     cust.value = { status: 'not_found' }
@@ -133,8 +103,9 @@ async function doCreateCustomer() {
   error.value = ''
   try {
     const r = await createCustomer(props.visitor.name, {
-      territory: f.territory, customer_group: f.customer_group, sales_person: f.sales_person,
-      erpnext_customer_type: f.erpnext_customer_type || 'Company',
+      territory: f.territory, sales_person: f.sales_person,
+      customer_group: newCust.customer_group || undefined,
+      erpnext_customer_type: newCust.erpnext_customer_type || 'Company',
     })
     cust.value = { status: 'found', matched_by: 'mobile', customer_name: r.customer_name, customer_id: r.customer_id }
     showFlash(r.customer_reused ? 'Contact linked to existing customer' : 'Customer Created!', r.customer_name)
@@ -174,6 +145,10 @@ async function save() {
 .em-cust--contact_only { background: var(--blue-100); border-color: transparent; color: var(--blue-600); }
 .em-cust__sp { font-size: 12px; margin-top: 2px; }
 .em-cust__btn { padding: 6px 12px; font-size: 12px; margin-left: 8px; }
+.em-newcust { display: grid; grid-template-columns: 130px 1fr auto; gap: 8px; margin-top: 10px; }
+.em-newcust .form-input { padding: 8px 10px; font-size: 13px; }
+.em-newcust .btn { padding: 8px 12px; font-size: 13px; background: white; }
+@media (max-width: 480px) { .em-newcust { grid-template-columns: 1fr 1fr; } .em-newcust .btn { grid-column: 1 / -1; } }
 .em-actions { display: flex; gap: 10px; margin-top: 4px; }
 .spinner--sm { width: 14px; height: 14px; border-width: 2px; display: inline-block; vertical-align: -2px; margin-right: 6px; }
 </style>

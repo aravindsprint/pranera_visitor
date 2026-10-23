@@ -15,18 +15,72 @@ MAX_LEAD_ATTEMPTS = 3
 
 
 # ── Territory ────────────────────────────────────────────────────────────────
+def place_key(text):
+	"""Spelling-tolerant key for state / city names typed at the gate.
+
+	Production has rows like 'Tamilnadu' / 'Thirupur' next to 'Tamil Nadu' /
+	'Tiruppur'; exact matching sent those visitors to ROI. Letters only,
+	lower-case, no 'h', doubled letters collapsed:
+	  Tiruppur, Tirupur, Thirupur → 'tirupur'
+	  Tamil Nadu, Tamilnadu, TAMIL NADU → 'tamilnadu'"""
+	s = "".join(ch for ch in (text or "").lower() if ch.isalpha()).replace("h", "")
+	out = []
+	for ch in s:
+		if not out or out[-1] != ch:
+			out.append(ch)
+	return "".join(out)
+
+
+TN = place_key("Tamil Nadu")
+KL = place_key("Kerala")
+# Every other state/UT — used only to tell "clearly not Tamil Nadu" apart
+# from a misspelt or blank state.
+OTHER_STATES = {place_key(x) for x in (
+	"Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat",
+	"Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh",
+	"Maharashtra", "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan",
+	"Sikkim", "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi",
+	"Puducherry", "Jammu and Kashmir", "Ladakh", "Chandigarh", "Andaman and Nicobar Islands",
+	"Lakshadweep", "Dadra and Nagar Haveli and Daman and Diu",
+)}
+
+
+def fuzzy_in(key, candidates, ratio=0.8):
+	"""True if `key` is one of `candidates` allowing gate-typing slips:
+	exact, a 4+ letter prefix ('coim' → coimbatore, 'karu' → karur), or
+	close enough ('tirppur', 'tiurpur', 'turupur' → tirupur)."""
+	from difflib import SequenceMatcher
+
+	if not key:
+		return False
+	if key in candidates:
+		return True
+	if len(key) >= 4 and any(c.startswith(key) for c in candidates):
+		return True
+	# extra words after the name: 'Erode district', 'Salem Steel', 'Tiruppur North'
+	if any(len(c) >= 5 and key.startswith(c) for c in candidates):
+		return True
+	return len(key) >= 5 and any(SequenceMatcher(None, key, c).ratio() >= ratio for c in candidates)
+
+
 def territory_zone(state, city):
-	"""KONGU / ROTN / ROI — same rule the Ionic page applied on city select:
-	Tamil Nadu + a KONGU city → KONGU; rest of Tamil Nadu or Kerala → ROTN;
-	everything else → ROI. City and state lists come from Visitor Settings."""
+	"""KONGU / ROTN / ROI — the Ionic page's rule (Tamil Nadu + a KONGU city →
+	KONGU; rest of Tamil Nadu or Kerala → ROTN; everything else → ROI), made
+	tolerant of how states and cities are actually typed at the gate.
+
+	A KONGU city counts as KONGU unless the state is clearly another state —
+	blank, misspelt ('Thamilnagu') or the city typed into the state box all
+	still land in KONGU. City and ROTN-state lists come from Visitor Settings."""
 	s = get_settings()
-	kongu = {c.strip().lower() for c in (s.kongu_cities or "").splitlines() if c.strip()}
-	rotn_states = {c.strip().lower() for c in (s.rotn_states or "").splitlines() if c.strip()}
-	st = (state or "").strip().lower()
-	ct = (city or "").strip().lower()
-	if st in ("tamil nadu", "tn") and ct in kongu:
+	kongu = {place_key(c) for c in (s.kongu_cities or "").splitlines() if c.strip()}
+	rotn = {place_key(c) for c in (s.rotn_states or "").splitlines() if c.strip()} | {TN, KL}
+	st, ct = place_key(state), place_key(city)
+
+	is_tn = st == "tn" or fuzzy_in(st, {TN})
+	other_state = not is_tn and st in OTHER_STATES
+	if fuzzy_in(ct, kongu) and not other_state:
 		return "KONGU"
-	if st in rotn_states or st in ("tn", "kl"):
+	if is_tn or st == "kl" or fuzzy_in(st, rotn):
 		return "ROTN"
 	return "ROI"
 
@@ -260,7 +314,17 @@ def _insert_lead(vd, s, ten, first_name):
 		lead.custom_lead_temperature = s.lead_temperature or "Hot"
 	lead.insert(ignore_permissions=True)
 
-	frappe.db.set_value("Visitor Data", vd.name, "crm_lead", lead.name, update_modified=False)
+	# Write the assignment back onto the visit. The Node app only put it on
+	# the lead, which is why 40k Visitor Data rows have no sales person.
+	# A guard/sales edit that already set a value is never overwritten.
+	updates = {"crm_lead": lead.name}
+	if sales_person and not vd.get("sales_person") and frappe.db.exists("Sales Person", sales_person):
+		updates["sales_person"] = sales_person
+	if not vd.get("territory"):
+		terr = link_value_or_none("Visitor Data", "territory", zone)
+		if terr:
+			updates["territory"] = terr
+	frappe.db.set_value("Visitor Data", vd.name, updates, update_modified=False)
 
 	if not contact_by_mobile(ten):
 		try:

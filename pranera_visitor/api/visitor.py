@@ -43,16 +43,11 @@ DEPARTMENTS = ("Fabric", "Garments", "Others")
 LIST_FIELDS = [
 	"name", "date", "name1", "company_name", "mobile_no", "location", "department",
 	"state", "city", "territory", "out", "out_date", "duration", "docstatus",
-	"sales_person", "customer_type", "erpnext_customer_type", "customer_group", "source",
-	"commercial_name", "color", "sample_qty", "bulk_qty", "remarks", "notes",
+	"sales_person", "remarks", "notes",
 	"customer", "crm_lead", "checked_in_by", "long_stay_notified",
 ]
 
-EDITABLE_FIELDS = (
-	"sales_person", "customer_type", "erpnext_customer_type", "customer_group", "source",
-	"territory", "commercial_name", "color", "sample_qty", "bulk_qty", "remarks", "notes",
-	"state", "city",
-)
+EDITABLE_FIELDS = ("sales_person", "territory", "remarks", "notes", "state", "city")
 
 
 # ── Access ───────────────────────────────────────────────────────────────────
@@ -128,11 +123,8 @@ def get_boot():
 		"departments": list(DEPARTMENTS),
 		"options": {
 			"remarks": option_list("remarks_options"),
-			"commercial_names": option_list("commercial_name_options"),
-			"colors": option_list("color_options"),
-			"customer_types": ["Existing", "New"],
+			# Only used when creating a Customer from the Edit sheet.
 			"erpnext_customer_types": ["Company", "Individual", "Partnership"],
-			"sources": ["Walk-In", "Inbound Call", "Expo", "Outbound Call"],
 		},
 		"customer_groups": frappe.get_all("Customer Group", {"is_group": 0}, pluck="name", order_by="name asc"),
 		"sales_persons": frappe.get_all(
@@ -272,7 +264,10 @@ def check_in(data, client_id=None):
 		"department": department,
 		"state": state,
 		"city": city,
-		"territory": link_value_or_none(DT, "territory", zone),
+		# "" (not None) on purpose: None lets Frappe fill the user/global
+		# default ("All Territories"), which looked like a real value.
+		"territory": link_value_or_none(DT, "territory", zone) or "",
+		"sales_person": "",
 		"id": client_id or f"{ten}-{now_datetime().strftime('%Y%m%d%H%M%S')}",
 		"idx": _unique_idx(),
 		"checkin_source": "Visitor App",
@@ -335,10 +330,7 @@ def update_visitor(name, data, link_contact_to_customer=0):
 	for f in EDITABLE_FIELDS:
 		if f in d:
 			val = d.get(f)
-			if f in ("sample_qty", "bulk_qty"):
-				val = frappe.utils.flt(val) if val not in (None, "") else None
-			else:
-				val = clean_str(val)
+			val = clean_str(val)
 			if f in ("sales_person", "customer_group", "territory"):
 				val = link_value_or_none(DT, f, val)
 			doc.set(f, val)
