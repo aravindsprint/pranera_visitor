@@ -298,6 +298,15 @@ def create_lead_for_visitor(visitor_name):
 		send_whatsapp_template(whatsapp, lead_name, vd.location)
 
 
+def default_lead_status():
+	"""First CRM Lead Status by position. erp.pranera.in replaced the stock
+	statuses ("New" doesn't exist there; the first one is "New Enquiry"), so a
+	hardcoded "New" failed link validation on every insert."""
+	if frappe.db.exists("CRM Lead Status", "New"):
+		return "New"
+	return frappe.db.get_value("CRM Lead Status", {}, "name", order_by="position asc")
+
+
 def _insert_lead(vd, s, ten, first_name):
 	owner, sales_person, whatsapp = resolve_lead_owner(vd)
 	zone = territory_zone(vd.state, vd.city)
@@ -307,7 +316,7 @@ def _insert_lead(vd, s, ten, first_name):
 		"doctype": "CRM Lead",
 		"first_name": first_name,
 		"mobile_no": vd.mobile_no,
-		"status": "New",
+		"status": default_lead_status(),
 		"source": link_value_or_none("CRM Lead", "source", source),
 		"lead_owner": owner,
 		"territory": link_value_or_none("CRM Lead", "territory", zone),
