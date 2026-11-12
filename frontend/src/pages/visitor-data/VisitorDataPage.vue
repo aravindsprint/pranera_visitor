@@ -78,7 +78,7 @@
             </div>
             <div class="form-group">
               <label class="form-label">City</label>
-              <AutoComplete v-model="form.city" :options="cityOptions" placeholder="Search or type city" allow-custom />
+              <AutoComplete v-model="form.city" :options="cityOptions" :placeholder="cityOptions.length ? 'Search or type city' : 'Type city'" allow-custom />
               <div v-if="tried && !form.city" class="field-error">City is required.</div>
             </div>
           </div>
@@ -173,7 +173,7 @@ import { useAuthStore } from '@/stores/auth'
 import { isOnline, enqueue, newClientId, flushQueue } from '@/composables/useSync'
 import { db, cacheGet, cacheSet } from '@/db'
 import { lookupMobile, checkIn, markExit, getActiveVisitors } from '@/api/frappe'
-import { INDIA_STATES, INDIA_CITIES } from '@/data/indiaLocations'
+import { INDIA_STATES } from '@/data/indiaLocations'
 import { fmtDateTime, fmtTime, hms, minutesSince, normaliseMobile, toFrappeDatetime } from '@/utils/format'
 
 const auth = useAuthStore()
@@ -201,8 +201,14 @@ const mobileError = computed(() => {
 
 // States are stored by label (e.g. "Tamil Nadu"), cities keyed by state code.
 const stateOptions = INDIA_STATES.map(s => ({ label: s.label, value: s.label }))
-const stateCode = computed(() => INDIA_STATES.find(s => s.label.toLowerCase() === (form.state || '').toLowerCase())?.value)
-const cityOptions = computed(() => (INDIA_CITIES[stateCode.value] || []).map(c => c.label))
+// Cities come from the CRM Territory tree (get_boot → cities, keyed by state).
+// A state without districts there has no list: the city is typed.
+const placeKey = s => (s || '').toLowerCase().replace(/[^a-z]/g, '')
+const cityOptions = computed(() => {
+  const cities = auth.boot?.cities || {}
+  const state = Object.keys(cities).find(s => placeKey(s) === placeKey(form.state))
+  return state ? cities[state] : []
+})
 function onStateChange() { form.city = '' }
 
 function resetForm() {

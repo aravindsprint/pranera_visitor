@@ -131,6 +131,8 @@ def get_boot():
 			"Sales Person", {"enabled": 1, "is_group": 0}, pluck="name", order_by="name asc"
 		),
 		"territories": frappe.get_all("Territory", {"is_group": 0}, pluck="name", order_by="name asc"),
+		# City dropdown, per state, from the CRM Territory tree
+		"cities": crm.city_options(),
 		"long_stay_minutes": cint(get_settings().long_stay_minutes) or 60,
 	}
 

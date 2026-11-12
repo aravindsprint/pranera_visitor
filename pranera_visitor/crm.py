@@ -90,6 +90,39 @@ def zone_places():
 	return places
 
 
+def city_options():
+	"""{state: [cities]} for the gate's City dropdown, from the CRM Territory
+	tree. A district under a state (Kerala → Ernakulam) belongs to that state;
+	a district directly under KONGU or ROTN is in Tamil Nadu. States the tree
+	lists without districts get no list (the gate types the city)."""
+	if not frappe.db.exists("DocType", "CRM Territory"):
+		return {}
+	rows = frappe.get_all(
+		"CRM Territory", fields=["name", "parent_crm_territory as parent", "is_group"]
+	)
+	parent = {r.name: r.parent for r in rows}
+	states = OTHER_STATES | {TN}
+
+	def state_of(name):
+		node = parent.get(name)
+		while node:
+			if place_key(node) in states:
+				return node
+			if node in ("KONGU", "ROTN"):
+				return "Tamil Nadu"
+			node = parent.get(node)
+		return None
+
+	options = {}
+	for r in rows:
+		if r.is_group or r.name in ZONES or place_key(r.name) in states:
+			continue
+		state = state_of(r.name)
+		if state:
+			options.setdefault(state, set()).add(r.name)
+	return {state: sorted(cities) for state, cities in options.items()}
+
+
 def territory_zone(state, city):
 	"""KONGU / ROTN / ROI for a gate check-in.
 
