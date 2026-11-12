@@ -40,7 +40,6 @@ def place_key(text):
 
 
 TN = place_key("Tamil Nadu")
-KL = place_key("Kerala")
 # Every other state/UT — used only to tell "clearly not Tamil Nadu" apart
 # from a misspelt or blank state.
 OTHER_STATES = {place_key(x) for x in (
@@ -71,24 +70,54 @@ def fuzzy_in(key, candidates, ratio=0.8):
 	return len(key) >= 5 and any(SequenceMatcher(None, key, c).ratio() >= ratio for c in candidates)
 
 
-def territory_zone(state, city):
-	"""KONGU / ROTN / ROI — the Ionic page's rule (Tamil Nadu + a KONGU city →
-	KONGU; rest of Tamil Nadu or Kerala → ROTN; everything else → ROI), made
-	tolerant of how states and cities are actually typed at the gate.
+ZONES = ("KONGU", "ROTN", "ROI")
 
-	A KONGU city counts as KONGU unless the state is clearly another state —
-	blank, misspelt ('Thamilnagu') or the city typed into the state box all
-	still land in KONGU. City and ROTN-state lists come from Visitor Settings."""
+
+def zone_places():
+	"""{zone: place keys} from the CRM Territory tree: every territory under
+	KONGU, ROTN or ROI (districts, states), so sales can move a district
+	between zones in the CRM without a code change."""
+	places = {zone: set() for zone in ZONES}
+	if not frappe.db.exists("DocType", "CRM Territory"):
+		return places
+	for zone in frappe.get_all(
+		"CRM Territory", filters={"name": ["in", ZONES]}, fields=["name", "lft", "rgt"]
+	):
+		names = frappe.get_all(
+			"CRM Territory", filters={"lft": [">", zone.lft], "rgt": ["<", zone.rgt]}, pluck="name"
+		)
+		places[zone.name] = {place_key(n) for n in names}
+	return places
+
+
+def territory_zone(state, city):
+	"""KONGU / ROTN / ROI for a gate check-in.
+
+	1. The city is under KONGU in the CRM Territory tree, or in Visitor
+	   Settings → KONGU Cities (towns the tree doesn't list: Avinashi,
+	   Pollachi, …) → KONGU. Typing slips are tolerated, and a blank or
+	   misspelt state still counts; only a clearly different state doesn't.
+	2. The city or the state is under ROTN or ROI in the tree → that zone
+	   (Chennai → ROTN, Kerala → ROI).
+	3. Tamil Nadu (however typed) or a Visitor Settings → ROTN State → ROTN.
+	4. Everything else → ROI."""
 	s = get_settings()
-	kongu = {place_key(c) for c in (s.kongu_cities or "").splitlines() if c.strip()}
-	rotn = {place_key(c) for c in (s.rotn_states or "").splitlines() if c.strip()} | {TN, KL}
+	places = zone_places()
+	extra_towns = {place_key(c) for c in (s.kongu_cities or "").splitlines() if c.strip()}
 	st, ct = place_key(state), place_key(city)
 
 	is_tn = st == "tn" or fuzzy_in(st, {TN})
 	other_state = not is_tn and st in OTHER_STATES
-	if fuzzy_in(ct, kongu) and not other_state:
+	if fuzzy_in(ct, places["KONGU"] | extra_towns) and not other_state:
 		return "KONGU"
-	if is_tn or st == "kl" or fuzzy_in(st, rotn):
+	# exact names only here: a fuzzy match across ~100 districts and states
+	# would pull look-alikes into the wrong zone
+	for key in (ct, st):
+		for zone in ("ROTN", "ROI"):
+			if key and key in places[zone]:
+				return zone
+	rotn_states = {place_key(c) for c in (s.rotn_states or "").splitlines() if c.strip()}
+	if is_tn or fuzzy_in(st, rotn_states):
 		return "ROTN"
 	return "ROI"
 

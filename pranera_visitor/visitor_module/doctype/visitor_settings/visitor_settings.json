@@ -2,7 +2,7 @@
  "actions": [],
  "allow_rename": 0,
  "creation": "2026-10-23 00:00:00.000000",
- "modified": "2026-10-23 16:30:00.000000",
+ "modified": "2026-11-12 17:00:00.000000",
  "doctype": "DocType",
  "engine": "InnoDB",
  "module": "Visitor Module",
@@ -102,7 +102,7 @@
    "fieldname": "kongu_cities",
    "fieldtype": "Small Text",
    "label": "KONGU Cities",
-   "description": "One per line. A Tamil Nadu visitor from one of these cities is KONGU. Spelling variants (Tirupur / Thirupur / Tiruppur) match automatically."
+   "description": "One per line. Towns that are KONGU besides the districts under KONGU in CRM Territory (for example Avinashi, Pollachi, Palladam). Spelling variants (Tirupur / Thirupur / Tiruppur) match automatically."
   },
   {
    "fieldname": "territory_cb",
@@ -112,7 +112,7 @@
    "fieldname": "rotn_states",
    "fieldtype": "Small Text",
    "label": "ROTN States",
-   "description": "One per line. Any other city in these states is ROTN. Everything else is ROI."
+   "description": "One per line. Used only for a state that is not in the CRM Territory tree: its visitors are ROTN. Everything else is ROI."
   },
   {
    "fieldname": "department_section",
