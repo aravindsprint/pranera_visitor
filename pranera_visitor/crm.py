@@ -39,150 +39,131 @@ def place_key(text):
 	return "".join(out)
 
 
-TN = place_key("Tamil Nadu")
-# Every other state/UT — used only to tell "clearly not Tamil Nadu" apart
-# from a misspelt or blank state.
-OTHER_STATES = {place_key(x) for x in (
-	"Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat",
-	"Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh",
-	"Maharashtra", "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan",
-	"Sikkim", "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi",
-	"Puducherry", "Jammu and Kashmir", "Ladakh", "Chandigarh", "Andaman and Nicobar Islands",
-	"Lakshadweep", "Dadra and Nagar Haveli and Daman and Diu",
-)}
+# Reference data, not configuration: the names of India's states and union territories, so the City
+# dropdown can tell a state in CRM Territory (Kerala) from a district (Ernakulam).
+INDIA_STATES = {
+	place_key(x)
+	for x in (
+		"Andaman and Nicobar Islands", "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar",
+		"Chandigarh", "Chhattisgarh", "Chattishgarh", "Dadra and Nagar Haveli and Daman and Diu",
+		"Dadra and Nagar Haveli", "Daman and Diu", "Delhi", "Goa", "Gujarat", "Haryana",
+		"Himachal Pradesh", "Jammu and Kashmir", "Jharkhand", "Karnataka", "Kerala", "Ladakh",
+		"Lakshadweep", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram", "Nagaland",
+		"Odisha", "Puducherry", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura",
+		"Uttar Pradesh", "Uttarakhand", "West Bengal",
+	)
+}
 
 
-def fuzzy_in(key, candidates, ratio=0.8):
-	"""True if `key` is one of `candidates` allowing gate-typing slips:
-	exact, a 4+ letter prefix ('coim' → coimbatore, 'karu' → karur), or
-	close enough ('tirppur', 'tiurpur', 'turupur' → tirupur)."""
+def _closest(key, names, ratio=0.8):
+	"""The name in `names` ({place key: name}) that `key` means, allowing gate-typing slips: exact,
+	a 4+ letter prefix of one name only ('coim' → Coimbatore), extra words after the name ('Erode
+	district'), or close enough ('tirppur' → Tiruppur). None when nothing is close."""
 	from difflib import SequenceMatcher
 
 	if not key:
-		return False
-	if key in candidates:
-		return True
-	if len(key) >= 4 and any(c.startswith(key) for c in candidates):
-		return True
-	# extra words after the name: 'Erode district', 'Salem Steel', 'Tiruppur North'
-	if any(len(c) >= 5 and key.startswith(c) for c in candidates):
-		return True
-	return len(key) >= 5 and any(SequenceMatcher(None, key, c).ratio() >= ratio for c in candidates)
+		return None
+	if key in names:
+		return names[key]
+	if len(key) >= 4:
+		starts = [n for k, n in names.items() if k.startswith(key)]
+		if len(starts) == 1:
+			return starts[0]
+	longest = max((k for k in names if len(k) >= 5 and key.startswith(k)), key=len, default=None)
+	if longest:
+		return names[longest]
+	if len(key) < 5:
+		return None
+	score, best = max(((SequenceMatcher(None, key, k).ratio(), n) for k, n in names.items()), default=(0, None))
+	return best if score >= ratio else None
 
 
-ZONES = ("KONGU", "ROTN", "ROI")
-
-
-def zone_places():
-	"""{zone: place keys} from the CRM Territory tree: every territory under
-	KONGU, ROTN or ROI (districts, states), so sales can move a district
-	between zones in the CRM without a code change."""
-	places = {zone: set() for zone in ZONES}
-	if not frappe.db.exists("DocType", "CRM Territory"):
-		return places
-	for zone in frappe.get_all(
-		"CRM Territory", filters={"name": ["in", ZONES]}, fields=["name", "lft", "rgt"]
-	):
-		names = frappe.get_all(
-			"CRM Territory", filters={"lft": [">", zone.lft], "rgt": ["<", zone.rgt]}, pluck="name"
-		)
-		places[zone.name] = {place_key(n) for n in names}
-	return places
-
-
-def city_options():
-	"""{state: [cities]} for the gate's City dropdown, from the CRM Territory
-	tree. A district under a state (Kerala → Ernakulam) belongs to that state;
-	a district directly under KONGU or ROTN is in Tamil Nadu. States the tree
-	lists without districts get no list (the gate types the city)."""
+def _tree() -> dict:
+	"""CRM Territory as {name: row(parent, manager, is_group)}; empty without Frappe CRM."""
 	if not frappe.db.exists("DocType", "CRM Territory"):
 		return {}
 	rows = frappe.get_all(
-		"CRM Territory", fields=["name", "parent_crm_territory as parent", "is_group"]
+		"CRM Territory",
+		fields=["name", "parent_crm_territory as parent", "territory_manager as manager", "is_group"],
 	)
-	parent = {r.name: r.parent for r in rows}
-	states = OTHER_STATES | {TN}
+	return {r.name: r for r in rows}
+
+
+def _chain(tree, name) -> list:
+	"""The territory and its parents, up to the root."""
+	out = []
+	while name and name in tree and name not in out:
+		out.append(name)
+		name = tree[name].parent
+	return out
+
+
+def _zone(tree, name) -> str:
+	"""The territory's zone: its group just below the root of the tree (KONGU, ROTN, ROI, ... as the
+	tree has them). A zone is its own zone; the root has none."""
+	chain = _chain(tree, name)
+	return chain[-2] if len(chain) >= 2 else ""
+
+
+def visitor_territory(state, city, tree=None) -> str | None:
+	"""The CRM Territory a visitor belongs to: the one named like the city, else like the state
+	(spelling tolerant), else Visitor Settings → Default Territory. The city wins when both match:
+	the tree may group districts by zone, not by state. A town that is not a district goes in CRM
+	Territory under its district or zone."""
+	tree = tree if tree is not None else _tree()
+	names = {}
+	for name, row in tree.items():
+		if row.parent:  # the root (All Territories) is nobody's territory
+			names.setdefault(place_key(name), name)
+	for text in (city, state):
+		found = _closest(place_key(text), names)
+		if found:
+			return found
+	default = get_settings().default_territory
+	return default if default in tree else None
+
+
+def territory_zone(state, city) -> str:
+	"""The visitor's zone (the top-level group of their territory in CRM Territory), or ""."""
+	tree = _tree()
+	return _zone(tree, visitor_territory(state, city, tree))
+
+
+def territory_manager(state, city) -> str | None:
+	"""The user who gets a new visitor's lead: the Territory Manager of the visitor's territory,
+	going up the tree to the first one that is set."""
+	tree = _tree()
+	return next(
+		(tree[n].manager for n in _chain(tree, visitor_territory(state, city, tree)) if tree[n].manager),
+		None,
+	)
+
+
+def city_options() -> dict:
+	"""{state: [cities]} for the gate's City dropdown, from CRM Territory. A territory under a state
+	(Kerala → Ernakulam) belongs to that state. One under a zone listed in Visitor Settings → Home
+	State Zones (KONGU → Tiruppur) belongs to Visitor Settings → Home State. States without districts
+	get no list (the gate types the city)."""
+	tree = _tree()
+	settings = get_settings()
+	home = (settings.home_state or "").strip()
+	home_zones = {z.strip() for z in (settings.home_state_zones or "").splitlines() if z.strip()}
+	is_state = {n for n in tree if place_key(n) in INDIA_STATES}
 
 	def state_of(name):
-		node = parent.get(name)
-		while node:
-			if place_key(node) in states:
+		for node in _chain(tree, name)[1:]:
+			if node in is_state:
 				return node
-			if node in ("KONGU", "ROTN"):
-				return "Tamil Nadu"
-			node = parent.get(node)
-		return None
+		return home if home and _zone(tree, name) in home_zones else None
 
 	options = {}
-	for r in rows:
-		if r.is_group or r.name in ZONES or place_key(r.name) in states:
+	for name, row in tree.items():
+		if row.is_group or not row.parent or name in is_state or _zone(tree, name) == name:
 			continue
-		state = state_of(r.name)
+		state = state_of(name)
 		if state:
-			options.setdefault(state, set()).add(r.name)
+			options.setdefault(state, set()).add(name)
 	return {state: sorted(cities) for state, cities in options.items()}
-
-
-def territory_zone(state, city):
-	"""KONGU / ROTN / ROI for a gate check-in.
-
-	1. The city is under KONGU in the CRM Territory tree, or in Visitor
-	   Settings → KONGU Cities (towns the tree doesn't list: Avinashi,
-	   Pollachi, …) → KONGU. Typing slips are tolerated, and a blank or
-	   misspelt state still counts; only a clearly different state doesn't.
-	2. The city or the state is under ROTN or ROI in the tree → that zone
-	   (Chennai → ROTN, Kerala → ROI).
-	3. Tamil Nadu (however typed) or a Visitor Settings → ROTN State → ROTN.
-	4. Everything else → ROI."""
-	s = get_settings()
-	places = zone_places()
-	extra_towns = {place_key(c) for c in (s.kongu_cities or "").splitlines() if c.strip()}
-	st, ct = place_key(state), place_key(city)
-
-	is_tn = st == "tn" or fuzzy_in(st, {TN})
-	other_state = not is_tn and st in OTHER_STATES
-	if fuzzy_in(ct, places["KONGU"] | extra_towns) and not other_state:
-		return "KONGU"
-	# exact names only here: a fuzzy match across ~100 districts and states
-	# would pull look-alikes into the wrong zone
-	for key in (ct, st):
-		for zone in ("ROTN", "ROI"):
-			if key and key in places[zone]:
-				return zone
-	rotn_states = {place_key(c) for c in (s.rotn_states or "").splitlines() if c.strip()}
-	if is_tn or fuzzy_in(st, rotn_states):
-		return "ROTN"
-	return "ROI"
-
-
-def territory_manager(state, city, zone):
-	"""The user who gets a new visitor's lead: the Territory Manager in CRM Territory of the visitor's
-	city, else of its state, else of the zone, going up the tree to the first one that is set. A
-	city or state counts only when it sits under the visitor's zone (Coimbatore typed with
-	Karnataka is ROI, so it takes ROI's manager, not KONGU's)."""
-	if not frappe.db.exists("DocType", "CRM Territory"):
-		return None
-	rows = frappe.get_all(
-		"CRM Territory", fields=["name", "parent_crm_territory as parent", "territory_manager"]
-	)
-	parent = {r.name: r.parent for r in rows}
-	manager = {r.name: r.territory_manager for r in rows}
-	by_key = {place_key(r.name): r.name for r in rows}
-
-	def chain(name):
-		seen = []
-		while name and name not in seen:
-			seen.append(name)
-			name = parent.get(name)
-		return seen
-
-	start = zone
-	for key in (place_key(city), place_key(state)):
-		node = by_key.get(key)
-		if node and zone in chain(node):
-			start = node
-			break
-	return next((manager[n] for n in chain(start) if manager.get(n)), None)
 
 
 def sales_person_of_user(user):
@@ -326,11 +307,13 @@ def create_customer_for_visitor(vd, overrides=None):
 
 # ── CRM Lead ─────────────────────────────────────────────────────────────────
 def resolve_lead_owner(vd):
-	"""Same priority as the Node server:
-	1. Customer linked to the visitor's mobile → its first sales person
-	2. Customer whose name == company name → its first sales person
-	3. Department rule (Garments / Others) — also queues a WhatsApp alert
-	4. The Territory Manager in CRM Territory of the visitor's city, state or zone
+	"""Who gets the visitor's lead:
+	1. An existing customer (by the visitor's mobile, else by company name) → its first sales
+	   person, when that sales person has a CRM user.
+	2. Otherwise (a new customer, or one without such a sales person): a matching Department Rule in
+	   Visitor Settings, which may also queue a WhatsApp alert.
+	3. Otherwise the Territory Manager in CRM Territory of the visitor's territory (or the first
+	   one set above it).
 	Returns (lead_owner_user, sales_person, whatsapp_number)."""
 	ten = normalize_mobile(vd.mobile_no)
 	found = find_customer(ten, vd.company_name)
@@ -344,15 +327,14 @@ def resolve_lead_owner(vd):
 		if (rule.department or "").lower() == (vd.department or "").lower():
 			whatsapp = rule.whatsapp_notify
 			if rule.assign_to == "User" and rule.lead_owner:
-				return rule.lead_owner, None, whatsapp
+				return rule.lead_owner, sales_person_of_user(rule.lead_owner), whatsapp
 			if rule.sales_person:
 				owner = user_of_sales_person(rule.sales_person)
 				if owner:
 					return owner, rule.sales_person, whatsapp
 			break
 
-	zone = territory_zone(vd.state, vd.city)
-	owner = territory_manager(vd.state, vd.city, zone)
+	owner = territory_manager(vd.state, vd.city)
 	return owner, sales_person_of_user(owner), whatsapp
 
 
