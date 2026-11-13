@@ -37,9 +37,6 @@ def execute():
 
 	s.create_crm_lead = 1
 	s.lead_temperature = "Hot"
-	s.kongu_sales_person = _sp("Mahendran K")
-	s.rotn_sales_person = _sp("Vijay Ram")
-	s.roi_sales_person = _sp("Bhuvnesh Kumar")
 	s.kongu_cities = "\n".join(KONGU_CITIES)
 	s.rotn_states = "\n".join(ROTN_STATES)
 

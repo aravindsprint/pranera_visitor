@@ -2,7 +2,7 @@
  "actions": [],
  "allow_rename": 0,
  "creation": "2026-10-23 00:00:00.000000",
- "modified": "2026-11-12 17:00:00.000000",
+ "modified": "2026-11-13 13:00:00.000000",
  "doctype": "DocType",
  "engine": "InnoDB",
  "module": "Visitor Module",
@@ -16,10 +16,6 @@
   "lead_section",
   "create_crm_lead",
   "lead_temperature",
-  "lead_cb",
-  "kongu_sales_person",
-  "rotn_sales_person",
-  "roi_sales_person",
   "territory_section",
   "kongu_cities",
   "territory_cb",
@@ -70,28 +66,6 @@
    "fieldtype": "Data",
    "label": "Lead Temperature",
    "default": "Hot"
-  },
-  {
-   "fieldname": "lead_cb",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "kongu_sales_person",
-   "fieldtype": "Link",
-   "label": "KONGU Head",
-   "options": "Sales Person"
-  },
-  {
-   "fieldname": "rotn_sales_person",
-   "fieldtype": "Link",
-   "label": "ROTN + Kerala Head",
-   "options": "Sales Person"
-  },
-  {
-   "fieldname": "roi_sales_person",
-   "fieldtype": "Link",
-   "label": "ROI Head",
-   "options": "Sales Person"
   },
   {
    "fieldname": "territory_section",

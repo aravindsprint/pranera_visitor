@@ -155,9 +155,44 @@ def territory_zone(state, city):
 	return "ROI"
 
 
-def zone_head(zone):
-	s = get_settings()
-	return {"KONGU": s.kongu_sales_person, "ROTN": s.rotn_sales_person}.get(zone) or s.roi_sales_person
+def territory_manager(state, city, zone):
+	"""The user who gets a new visitor's lead: the Territory Manager in CRM Territory of the visitor's
+	city, else of its state, else of the zone, going up the tree to the first one that is set. A
+	city or state counts only when it sits under the visitor's zone (Coimbatore typed with
+	Karnataka is ROI, so it takes ROI's manager, not KONGU's)."""
+	if not frappe.db.exists("DocType", "CRM Territory"):
+		return None
+	rows = frappe.get_all(
+		"CRM Territory", fields=["name", "parent_crm_territory as parent", "territory_manager"]
+	)
+	parent = {r.name: r.parent for r in rows}
+	manager = {r.name: r.territory_manager for r in rows}
+	by_key = {place_key(r.name): r.name for r in rows}
+
+	def chain(name):
+		seen = []
+		while name and name not in seen:
+			seen.append(name)
+			name = parent.get(name)
+		return seen
+
+	start = zone
+	for key in (place_key(city), place_key(state)):
+		node = by_key.get(key)
+		if node and zone in chain(node):
+			start = node
+			break
+	return next((manager[n] for n in chain(start) if manager.get(n)), None)
+
+
+def sales_person_of_user(user):
+	"""The enabled Sales Person whose Employee is this user, if any."""
+	if not user:
+		return None
+	employee = frappe.db.get_value("Employee", {"user_id": user}, "name")
+	if not employee:
+		return None
+	return frappe.db.get_value("Sales Person", {"employee": employee, "enabled": 1}, "name")
 
 
 # ── Lookups ──────────────────────────────────────────────────────────────────
@@ -295,7 +330,7 @@ def resolve_lead_owner(vd):
 	1. Customer linked to the visitor's mobile → its first sales person
 	2. Customer whose name == company name → its first sales person
 	3. Department rule (Garments / Others) — also queues a WhatsApp alert
-	4. Territory zone head (KONGU / ROTN / ROI)
+	4. The Territory Manager in CRM Territory of the visitor's city, state or zone
 	Returns (lead_owner_user, sales_person, whatsapp_number)."""
 	ten = normalize_mobile(vd.mobile_no)
 	found = find_customer(ten, vd.company_name)
@@ -317,8 +352,8 @@ def resolve_lead_owner(vd):
 			break
 
 	zone = territory_zone(vd.state, vd.city)
-	head = zone_head(zone)
-	return user_of_sales_person(head), head, whatsapp
+	owner = territory_manager(vd.state, vd.city, zone)
+	return owner, sales_person_of_user(owner), whatsapp
 
 
 def create_lead_for_visitor(visitor_name):
