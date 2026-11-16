@@ -259,9 +259,22 @@ async function submitMobile() {
       }, { welcomeBack: l.date })
       return
     }
+    // Name, company and city all known (an earlier visit, else the CRM): check straight in.
+    // A guard who needs to correct them uses the edit button on the visitor afterwards.
+    const ex = res.existing
+    const l = res.status === 'known' ? res.last : null
+    const details = {
+      name: (l?.name1 || ex?.name || '').trim(),
+      company_name: (l?.company_name || ex?.company || '').trim(),
+      state: res.place?.state || l?.state || '',
+      city: res.place?.city || l?.city || '',
+    }
+    if (details.name.length >= 3 && details.company_name.length >= 3 && details.city) {
+      await doCheckIn({ mobile_no: ten, department: form.department, ...details }, { lastVisitOn: l?.date })
+      return
+    }
     tried.value = false
     step.value = 'details'
-    const ex = res.existing
     if (ex) {
       existingKind.value = ex.kind
       form.name = ex.name || ''
@@ -306,7 +319,7 @@ async function submitDetails() {
   await doCheckIn({ ...form, name: form.name.trim(), company_name: form.company_name.trim() })
 }
 
-async function doCheckIn(payload, { welcomeBack } = {}) {
+async function doCheckIn(payload, { welcomeBack, lastVisitOn } = {}) {
   busy.value = true
   const client_id = newClientId()
   const data = { ...payload, location: auth.location, checked_in_at: toFrappeDatetime() }
@@ -316,6 +329,8 @@ async function doCheckIn(payload, { welcomeBack } = {}) {
       showDialog('Already Checked In', `${res.visitor.name1} is already inside.`)
     } else if (welcomeBack) {
       showFlash(`Welcome Back! ${payload.name}`, `You already visited us today at ${fmtTime(welcomeBack)}`, { icon: '👋', tone: 'info' })
+    } else if (lastVisitOn) {
+      showFlash(`Welcome Back! ${payload.name}`, `You last visited us on\n${fmtDateTime(lastVisitOn)}`, { icon: '👋', tone: 'info' })
     } else {
       showFlash('Thanks for Coming!', payload.name, { icon: '🤝' })
     }
