@@ -45,7 +45,7 @@
       <div v-else class="card checkin">
         <div class="checkin__head">
           <div>
-            <div class="checkin__welcome">{{ known ? 'Welcome back' : 'New visitor' }}</div>
+            <div class="checkin__welcome">{{ known ? 'Welcome back' : existingKind ? 'Existing ' + existingKind : 'New visitor' }}</div>
             <div class="checkin__sub" v-if="known && lastVisit">Last visit {{ fmtDateTime(lastVisit) }}</div>
           </div>
           <div class="checkin__gate">Gate {{ auth.location }}</div>
@@ -71,7 +71,8 @@
           </div>
           <DepartmentPicker v-model="form.department" :options="departments" />
           <div v-if="tried && !form.department" class="field-error">Department is required.</div>
-          <div class="grid-2" style="margin-top:16px">
+          <!-- an existing customer's or lead's place comes from the CRM: not asked again -->
+          <div v-if="!placeKnown" class="grid-2" style="margin-top:16px">
             <div class="form-group">
               <label class="form-label">State</label>
               <AutoComplete v-model="form.state" :options="stateOptions" placeholder="Search state" allow-custom @change="onStateChange" />
@@ -82,7 +83,7 @@
               <div v-if="tried && !form.city" class="field-error">City is required.</div>
             </div>
           </div>
-          <div class="form-actions">
+          <div class="form-actions" :style="placeKnown ? 'margin-top:16px' : ''">
             <button type="button" class="btn btn-ghost" @click="resetForm">Back</button>
             <button type="submit" class="btn btn-primary btn-lg" :disabled="busy" style="flex:1">
               <span v-if="busy" class="btn-spinner"></span>{{ busy ? 'Saving…' : 'Check In' }}
@@ -186,6 +187,9 @@ const subtitle    = computed(() => auth.viewLocation ? `Gate ${auth.viewLocation
 // ── Form ──────────────────────────────────────────────────────────────────
 const step  = ref('mobile')            // 'mobile' | 'details'
 const known = ref(false)
+// 'customer' / 'lead' when the CRM knows the number; placeKnown when their state and city are known
+const existingKind = ref('')
+const placeKnown = ref(false)
 const lastVisit = ref('')
 const tried = ref(false)
 const busy  = ref(false)
@@ -215,6 +219,8 @@ function resetForm() {
   Object.assign(form, blank())
   step.value = 'mobile'
   known.value = false
+  existingKind.value = ''
+  placeKnown.value = false
   lastVisit.value = ''
   tried.value = false
   nextTick(() => mobileInput.value?.focus())
@@ -255,6 +261,12 @@ async function submitMobile() {
     }
     tried.value = false
     step.value = 'details'
+    const ex = res.existing
+    if (ex) {
+      existingKind.value = ex.kind
+      form.name = ex.name || ''
+      form.company_name = ex.company || ''
+    }
     if (res.status === 'known') {
       const l = res.last
       known.value = true
@@ -264,6 +276,12 @@ async function submitMobile() {
       form.state = l.state || ''
       form.city = l.city || ''
       showFlash(`Welcome Back! ${l.name1 || ''}`, `You last visited us on\n${fmtDateTime(l.date)}`, { icon: '👋', tone: 'info' })
+    }
+    // State and city already known (CRM, else an earlier visit): not asked again
+    if (res.place) {
+      placeKnown.value = true
+      form.state = res.place.state || ''
+      form.city = res.place.city
     }
   } catch (err) {
     if (err.network) {

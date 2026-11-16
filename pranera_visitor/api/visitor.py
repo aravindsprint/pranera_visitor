@@ -156,7 +156,12 @@ def lookup_mobile(mobile_no, location=None):
 	  inside          — already checked in today and not exited
 	  returning_today — visited earlier today (exited) → re-check-in with same details
 	  known           — visited on an earlier day → prefill the form
+	  existing        — never at the gate, but an existing customer or CRM lead →
+	                    prefill from the CRM
 	  new             — never seen → blank form
+	"existing" also comes with returning visitors who are customers or leads.
+	"place" is the visitor's state and city when they are already known (see
+	_known_place): the form doesn't ask for them again.
 	"""
 	_require_gate()
 	ten = normalize_mobile(mobile_no)
@@ -171,21 +176,52 @@ def lookup_mobile(mobile_no, location=None):
 		DT, {"mobile_no": ["like", f"%{ten}"], "docstatus": ["!=", 2]},
 		LIST_FIELDS + ["creation"], order_by="creation desc", limit=10,
 	)
+	existing = crm.existing_visitor(ten)
+	state, city = _known_place(ten, existing, rows)
+	place = {"state": state, "city": city} if city else None
 	if not rows:
-		return {"status": "new", "last": None}
+		return {
+			"status": "existing" if existing else "new",
+			"last": None,
+			"existing": existing,
+			"place": place,
+		}
 
 	last = _row(rows[0])
-	# State/city weren't always stored (old [object Object] bug, SQLite-only
-	# rows) — take them from the most recent row that has them.
-	if not clean_str(last.state) or not clean_str(last.city):
-		for r in rows:
-			if clean_str(r.state) and clean_str(r.city):
-				last.state, last.city = r.state, r.city
-				break
-	last.state, last.city = clean_str(last.state), clean_str(last.city)
+	if place:
+		last.state, last.city = state, city
+	else:
+		last.state, last.city = clean_str(last.state), clean_str(last.city)
 
 	visited_today = str(get_datetime(rows[0].creation).date()) == str(getdate())
-	return {"status": "returning_today" if visited_today else "known", "last": last}
+	return {
+		"status": "returning_today" if visited_today else "known",
+		"last": last,
+		"existing": existing,
+		"place": place,
+	}
+
+
+def _known_place(ten, existing=None, rows=None) -> tuple[str, str]:
+	"""The state and city a visitor is already known by, or ("", ""): the CRM's (an existing
+	customer or lead, crm.existing_visitor), else the most recent earlier visit that has both. Old
+	visits don't always have them (the [object Object] bug, SQLite-only rows), hence the search."""
+	if existing is None:
+		existing = crm.existing_visitor(ten) or {}
+	if existing.get("city"):
+		return existing.get("state") or "", existing["city"]
+	if rows is None:
+		rows = frappe.get_all(
+			DT,
+			{"mobile_no": ["like", f"%{ten}"], "docstatus": ["!=", 2]},
+			["state", "city"],
+			order_by="creation desc",
+			limit=10,
+		)
+	for r in rows:
+		if clean_str(r.state) and clean_str(r.city):
+			return clean_str(r.state), clean_str(r.city)
+	return "", ""
 
 
 def _checkin_time(client_time):
@@ -239,6 +275,10 @@ def check_in(data, client_id=None):
 	department = clean_str(d.department)
 	if len(ten) != 10:
 		frappe.throw(_("Enter a valid 10-digit mobile number"))
+	if not city:
+		# a known visitor: the form didn't ask, take the place they are known by
+		known_state, city = _known_place(ten)
+		state = state or known_state
 	if not name or len(name) < 3:
 		frappe.throw(_("Name should be at least 3 characters"))
 	if not company or len(company) < 3:

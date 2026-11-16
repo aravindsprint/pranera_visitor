@@ -4,6 +4,8 @@ getCustomerByMobile and createCustomerFromVisitor from the Node server.
 Runs inside Frappe now, so it uses the DB directly instead of REST calls
 with a hardcoded API token.
 """
+import re
+
 import frappe
 import requests
 from frappe.utils import cint
@@ -139,31 +141,115 @@ def territory_manager(state, city) -> str | None:
 	)
 
 
+def _home_state() -> tuple[str, set]:
+	settings = get_settings()
+	zones = {z.strip() for z in (settings.home_state_zones or "").splitlines() if z.strip()}
+	return (settings.home_state or "").strip(), zones
+
+
+def _state_of(tree, name, is_state, home, home_zones) -> str | None:
+	"""The state a territory is in: the state above it in CRM Territory, else the Home State when it
+	sits under one of the Home State Zones."""
+	for node in _chain(tree, name)[1:]:
+		if node in is_state:
+			return node
+	return home if home and _zone(tree, name) in home_zones else None
+
+
+def _is_place(tree, name, is_state) -> bool:
+	"""A district or town: not the root, a zone, a state or a group."""
+	row = tree.get(name)
+	return bool(row) and bool(row.parent) and not row.is_group and name not in is_state and _zone(tree, name) != name
+
+
 def city_options() -> dict:
 	"""{state: [cities]} for the gate's City dropdown, from CRM Territory. A territory under a state
 	(Kerala → Ernakulam) belongs to that state. One under a zone listed in Visitor Settings → Home
 	State Zones (KONGU → Tiruppur) belongs to Visitor Settings → Home State. States without districts
 	get no list (the gate types the city)."""
 	tree = _tree()
-	settings = get_settings()
-	home = (settings.home_state or "").strip()
-	home_zones = {z.strip() for z in (settings.home_state_zones or "").splitlines() if z.strip()}
+	home, home_zones = _home_state()
 	is_state = {n for n in tree if place_key(n) in INDIA_STATES}
-
-	def state_of(name):
-		for node in _chain(tree, name)[1:]:
-			if node in is_state:
-				return node
-		return home if home and _zone(tree, name) in home_zones else None
-
 	options = {}
-	for name, row in tree.items():
-		if row.is_group or not row.parent or name in is_state or _zone(tree, name) == name:
+	for name in tree:
+		if not _is_place(tree, name, is_state):
 			continue
-		state = state_of(name)
+		state = _state_of(tree, name, is_state, home, home_zones)
 		if state:
 			options.setdefault(state, set()).add(name)
 	return {state: sorted(cities) for state, cities in options.items()}
+
+
+def known_place(customer=None, lead_territory=None) -> tuple[str, str]:
+	"""(state, city) of an existing customer or lead, as CRM Territory names, or ("", ""): the
+	customer's territory, else the city on one of its addresses ('TIRUPUR-641608' → Tiruppur), else
+	the lead's territory when it is a district (a zone such as KONGU names no city)."""
+	tree = _tree()
+	is_state = {n for n in tree if place_key(n) in INDIA_STATES}
+	names = {place_key(n): n for n in tree if _is_place(tree, n, is_state)}
+	candidates = []  # (place text, state written with it)
+	if customer:
+		candidates.append((frappe.db.get_value("Customer", customer, "territory"), ""))
+		addresses = frappe.get_all(
+			"Dynamic Link",
+			filters={"link_doctype": "Customer", "link_name": customer, "parenttype": "Address"},
+			pluck="parent",
+		)
+		if addresses:
+			candidates += frappe.get_all(
+				"Address", filters={"name": ["in", addresses]}, fields=["city", "state"], as_list=True
+			)
+	if lead_territory:
+		candidates.append((lead_territory, ""))
+	home, home_zones = _home_state()
+	for text, state in candidates:
+		# an address city often carries the PIN code: 'TIRUPUR-641608', 'Tirupur - 641 604'
+		city = _closest(place_key(re.split(r"[-,0-9]", text or "")[0]), names)
+		if city:
+			return _state_of(tree, city, is_state, home, home_zones) or (state or ""), city
+	return "", ""
+
+
+def latest_lead(ten, with_organization=False):
+	"""The visitor's most recent CRM Lead by mobile (with an organization filled in, if asked)."""
+	filters = {"mobile_no": ["like", f"%{ten}"]}
+	if with_organization:
+		filters["organization"] = ["is", "set"]
+	rows = frappe.get_all(
+		"CRM Lead",
+		filters=filters,
+		fields=["name", "first_name", "organization", "custom_temp_organization", "territory"]
+		if frappe.get_meta("CRM Lead").has_field("custom_temp_organization")
+		else ["name", "first_name", "organization", "territory"],
+		order_by="creation desc",
+		limit=1,
+	)
+	return rows[0] if rows else None
+
+
+def existing_visitor(ten) -> dict | None:
+	"""What the CRM already knows about a mobile number at the gate: an existing customer (by its
+	contact) or an existing CRM lead. Returns the name, company, organization and place to fill the
+	check-in with, or None for a new visitor."""
+	found = find_customer(ten)
+	lead = latest_lead(ten)
+	if found.get("status") != "found" and not lead:
+		return None
+	with_org = latest_lead(ten, with_organization=True)
+	organization = (
+		found.get("customer_name") if found.get("status") == "found" else (with_org or {}).get("organization")
+	)
+	state, city = known_place(found.get("customer_id"), (lead or {}).get("territory"))
+	return {
+		"kind": "customer" if found.get("status") == "found" else "lead",
+		"customer": found.get("customer_id"),
+		"lead": (lead or {}).get("name"),
+		"name": found.get("full_name") or (lead or {}).get("first_name") or "",
+		"company": organization or (lead or {}).get("custom_temp_organization") or "",
+		"organization": organization or "",
+		"state": state,
+		"city": city,
+	}
 
 
 def sales_person_of_user(user):
@@ -409,7 +495,11 @@ def _insert_lead(vd, s, ten, first_name):
 	# Setter), so the lead is created without the mandatory check; Desk still
 	# asks for it on the next manual save, which is the intended prompt.
 	company = (vd.company_name or "").strip().upper()
-	if meta.has_field("custom_temp_organization"):
+	organization = _known_organization(ten, vd.company_name)
+	if organization:
+		# an existing customer or lead: its real organization, not the typed name
+		lead.organization = organization
+	elif meta.has_field("custom_temp_organization"):
 		lead.custom_temp_organization = company
 		lead.flags.ignore_mandatory = True
 	else:
@@ -441,6 +531,20 @@ def _insert_lead(vd, s, ten, first_name):
 			frappe.log_error(title=f"Visitor App: contact for {vd.name}")
 
 	return lead.name, whatsapp
+
+
+def _known_organization(ten, company_name):
+	"""The organization of an existing customer (by mobile, else by company name) or of the
+	visitor's earlier lead, for CRM Lead → Organization. None for a new visitor. When Organization
+	is a link (Frappe CRM's default), only an existing CRM Organization is used."""
+	found = find_customer(ten, company_name)
+	if found.get("status") == "found":
+		organization = found.get("customer_name")
+	else:
+		organization = (latest_lead(ten, with_organization=True) or {}).get("organization")
+	if not organization:
+		return None
+	return link_value_or_none("CRM Lead", "organization", organization)
 
 
 def enqueue_lead(visitor_name):
