@@ -510,6 +510,13 @@ def _insert_lead(vd, s, ten, first_name):
 		lead.custom_location = vd.location
 	if meta.has_field("custom_lead_temperature"):
 		lead.custom_lead_temperature = s.lead_temperature or "Hot"
+	# The contact first: a lead saved with an Organization puts the contact with its mobile under
+	# that organization and customer (Pranera CRM, lead_contact.py), so it has to exist already.
+	if not contact_by_mobile(ten):
+		try:
+			create_contact(first_name, ten)
+		except Exception:
+			frappe.log_error(title=f"Visitor App: contact for {vd.name}")
 	lead.insert(ignore_permissions=True)
 
 	# Write the assignment back onto the visit. The Node app only put it on
@@ -523,13 +530,6 @@ def _insert_lead(vd, s, ten, first_name):
 		if terr:
 			updates["territory"] = terr
 	frappe.db.set_value("Visitor Data", vd.name, updates, update_modified=False)
-
-	if not contact_by_mobile(ten):
-		try:
-			create_contact(first_name, ten)
-		except Exception:
-			frappe.log_error(title=f"Visitor App: contact for {vd.name}")
-
 	return lead.name, whatsapp
 
 
