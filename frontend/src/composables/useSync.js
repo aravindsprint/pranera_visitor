@@ -9,14 +9,18 @@
 //   * exits are queued too (the old app needed network to mark an exit)
 //   * a queued item that the server *rejects* (validation error) is kept as
 //     'failed' with the reason instead of being retried forever
+//   * an expired session is NOT a rejection: the item stays pending, the
+//     flush stops, and the guard is asked to log in again
 import { ref, onMounted, onUnmounted } from 'vue'
 import { db } from '@/db'
-import { checkIn, markExit } from '@/api/frappe'
+import { checkIn, markExit, isAuthErrorText, isLoggedIn } from '@/api/frappe'
 
 export const isOnline     = ref(navigator.onLine)
 export const isSyncing    = ref(false)
 export const pendingCount = ref(0)
 export const failedItems  = ref([])
+// Server says the session is gone — queued entries wait for a fresh login.
+export const authRequired = ref(false)
 
 let reachTimer = null
 let probeInFlight = null
@@ -41,6 +45,26 @@ export async function enqueue(type, payload, client_id = newClientId()) {
   await refreshQueueState()
   checkReachable()   // flips the banner to offline right away (or flushes if it was a blip)
   return client_id
+}
+
+// Entries that were wrongly marked 'failed' only because the session had
+// expired (older app versions did this) go back to the queue — the visit
+// itself was valid, it just needs a logged-in replay.
+export async function rescueAuthFailures() {
+  try {
+    const failed = await db.queue.where('status').equals('failed').toArray()
+    const stuck = failed.filter(f => isAuthErrorText(f.error))
+    for (const f of stuck) await db.queue.update(f.id, { status: 'pending', error: '' })
+    if (stuck.length) await refreshQueueState()
+    return stuck.length
+  } catch { return 0 }
+}
+
+// Manual retry from the failed list.
+export async function retryFailed(id) {
+  await db.queue.update(id, { status: 'pending', error: '' })
+  await refreshQueueState()
+  flushQueue()
 }
 
 export async function dismissFailed(id) {
@@ -84,6 +108,8 @@ export function checkReachable() {
 
 export async function flushQueue() {
   if (!isOnline.value || isSyncing.value) return
+  // Replaying as Guest only gets every entry rejected — wait for a login.
+  if (authRequired.value || !isLoggedIn()) return
   isSyncing.value = true   // claim before the first await so overlapping calls bail out
   let synced = 0
   try {
@@ -100,12 +126,16 @@ export async function flushQueue() {
             const res = await checkIn(item.payload.check_in_payload, item.payload.check_in_client_id)
             name = res?.visitor?.name
           }
-          if (name) await markExit(name)
+          if (name) await markExit(name, item.payload.exited_at)
         }
         await db.queue.delete(item.id)
         synced++
       } catch (err) {
         if (err.network) break      // connection dropped again — try later
+        if (err.auth) {             // session expired — keep it pending, ask for login
+          authRequired.value = true
+          break
+        }
         await db.queue.update(item.id, { status: 'failed', error: err.message })
       }
     }
@@ -117,6 +147,7 @@ export async function flushQueue() {
 }
 
 function onApiOk() { if (!isOnline.value) setOnline(true) }
+function onAuthRequired() { authRequired.value = true }
 
 function scheduleProbe() {
   clearTimeout(reachTimer)
@@ -137,6 +168,8 @@ export function useSync() {
     window.addEventListener('focus', onWake)
     document.addEventListener('visibilitychange', onWake)
     window.addEventListener('visitor:api-ok', onApiOk)
+    window.addEventListener('visitor:auth-required', onAuthRequired)
+    await rescueAuthFailures()
     await refreshQueueState()
     await checkReachable()
     flushQueue()
@@ -149,8 +182,9 @@ export function useSync() {
     window.removeEventListener('focus', onWake)
     document.removeEventListener('visibilitychange', onWake)
     window.removeEventListener('visitor:api-ok', onApiOk)
+    window.removeEventListener('visitor:auth-required', onAuthRequired)
     clearTimeout(reachTimer)
   })
 
-  return { isOnline, isSyncing, pendingCount, failedItems, flushQueue }
+  return { isOnline, isSyncing, pendingCount, failedItems, authRequired, flushQueue }
 }
