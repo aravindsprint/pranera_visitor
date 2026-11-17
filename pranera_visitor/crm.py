@@ -252,6 +252,20 @@ def existing_visitor(ten) -> dict | None:
 	}
 
 
+def erpnext_territory(zone):
+	"""Visitor Data's Territory for a CRM zone. The field links to ERPNext's Territory list, which may
+	name a zone differently (CRM "ROI" is ERPNext "Rest of India"): Visitor Settings → ERPNext
+	Territory for each zone pairs them, else the zone's own name is used. None when ERPNext has no
+	such territory."""
+	if not zone:
+		return None
+	mapped = next(
+		(row.erpnext_territory for row in get_settings().get("zone_territories") or [] if row.zone == zone),
+		None,
+	)
+	return link_value_or_none("Visitor Data", "territory", mapped or zone)
+
+
 def sales_person_of_user(user):
 	"""The enabled Sales Person whose Employee is this user, if any."""
 	if not user:
@@ -526,7 +540,7 @@ def _insert_lead(vd, s, ten, first_name):
 	if sales_person and not vd.get("sales_person") and frappe.db.exists("Sales Person", sales_person):
 		updates["sales_person"] = sales_person
 	if not vd.get("territory"):
-		terr = link_value_or_none("Visitor Data", "territory", zone)
+		terr = erpnext_territory(zone)
 		if terr:
 			updates["territory"] = terr
 	frappe.db.set_value("Visitor Data", vd.name, updates, update_modified=False)

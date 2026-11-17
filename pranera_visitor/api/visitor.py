@@ -309,7 +309,7 @@ def check_in(data, client_id=None):
 		"city": city,
 		# "" (not None) on purpose: None lets Frappe fill the user/global
 		# default ("All Territories"), which looked like a real value.
-		"territory": link_value_or_none(DT, "territory", zone) or "",
+		"territory": crm.erpnext_territory(zone) or "",
 		"sales_person": "",
 		"id": client_id or f"{ten}-{now_datetime().strftime('%Y%m%d%H%M%S')}",
 		"idx": _unique_idx(),

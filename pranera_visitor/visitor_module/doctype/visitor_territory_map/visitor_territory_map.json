@@ -1,0 +1,40 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-11-17 13:00:00.000000",
+ "modified": "2026-11-17 13:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "module": "Visitor Module",
+ "name": "Visitor Territory Map",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "editable_grid": 1,
+ "istable": 1,
+ "field_order": [
+  "zone",
+  "erpnext_territory"
+ ],
+ "fields": [
+  {
+   "fieldname": "zone",
+   "fieldtype": "Link",
+   "label": "CRM Zone",
+   "options": "CRM Territory",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "erpnext_territory",
+   "fieldtype": "Link",
+   "label": "ERPNext Territory",
+   "options": "Territory",
+   "reqd": 1,
+   "in_list_view": 1
+  }
+ ],
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
