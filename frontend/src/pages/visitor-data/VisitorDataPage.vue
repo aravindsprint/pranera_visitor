@@ -45,7 +45,7 @@
       <div v-else class="card checkin">
         <div class="checkin__head">
           <div>
-            <div class="checkin__welcome">{{ known ? 'Welcome back' : 'New visitor' }}</div>
+            <div class="checkin__welcome">{{ known ? 'Welcome back' : existingKind ? 'Existing ' + existingKind : 'New visitor' }}</div>
             <div class="checkin__sub" v-if="known && lastVisit">Last visit {{ fmtDateTime(lastVisit) }}</div>
           </div>
           <div class="checkin__gate">Gate {{ auth.location }}</div>
@@ -71,18 +71,19 @@
           </div>
           <DepartmentPicker v-model="form.department" :options="departments" />
           <div v-if="tried && !form.department" class="field-error">Department is required.</div>
-          <div class="grid-2" style="margin-top:16px">
+          <!-- an existing customer's or lead's place comes from the CRM: not asked again -->
+          <div v-if="!placeKnown" class="grid-2" style="margin-top:16px">
             <div class="form-group">
               <label class="form-label">State</label>
               <AutoComplete v-model="form.state" :options="stateOptions" placeholder="Search state" allow-custom @change="onStateChange" />
             </div>
             <div class="form-group">
               <label class="form-label">City</label>
-              <AutoComplete v-model="form.city" :options="cityOptions" placeholder="Search or type city" allow-custom />
+              <AutoComplete v-model="form.city" :options="cityOptions" :placeholder="cityOptions.length ? 'Search or type city' : 'Type city'" allow-custom />
               <div v-if="tried && !form.city" class="field-error">City is required.</div>
             </div>
           </div>
-          <div class="form-actions">
+          <div class="form-actions" :style="placeKnown ? 'margin-top:16px' : ''">
             <button type="button" class="btn btn-ghost" @click="resetForm">Back</button>
             <button type="submit" class="btn btn-primary btn-lg" :disabled="busy" style="flex:1">
               <span v-if="busy" class="btn-spinner"></span>{{ busy ? 'Saving…' : 'Check In' }}
@@ -173,7 +174,7 @@ import { useAuthStore } from '@/stores/auth'
 import { isOnline, enqueue, newClientId, flushQueue } from '@/composables/useSync'
 import { db, cacheGet, cacheSet } from '@/db'
 import { lookupMobile, checkIn, markExit, getActiveVisitors } from '@/api/frappe'
-import { INDIA_STATES, INDIA_CITIES } from '@/data/indiaLocations'
+import { INDIA_STATES } from '@/data/indiaLocations'
 import { fmtDateTime, fmtTime, hms, minutesSince, normaliseMobile, toFrappeDatetime } from '@/utils/format'
 
 const auth = useAuthStore()
@@ -186,6 +187,9 @@ const subtitle    = computed(() => auth.viewLocation ? `Gate ${auth.viewLocation
 // ── Form ──────────────────────────────────────────────────────────────────
 const step  = ref('mobile')            // 'mobile' | 'details'
 const known = ref(false)
+// 'customer' / 'lead' when the CRM knows the number; placeKnown when their state and city are known
+const existingKind = ref('')
+const placeKnown = ref(false)
 const lastVisit = ref('')
 const tried = ref(false)
 const busy  = ref(false)
@@ -201,14 +205,22 @@ const mobileError = computed(() => {
 
 // States are stored by label (e.g. "Tamil Nadu"), cities keyed by state code.
 const stateOptions = INDIA_STATES.map(s => ({ label: s.label, value: s.label }))
-const stateCode = computed(() => INDIA_STATES.find(s => s.label.toLowerCase() === (form.state || '').toLowerCase())?.value)
-const cityOptions = computed(() => (INDIA_CITIES[stateCode.value] || []).map(c => c.label))
+// Cities come from the CRM Territory tree (get_boot → cities, keyed by state).
+// A state without districts there has no list: the city is typed.
+const placeKey = s => (s || '').toLowerCase().replace(/[^a-z]/g, '')
+const cityOptions = computed(() => {
+  const cities = auth.boot?.cities || {}
+  const state = Object.keys(cities).find(s => placeKey(s) === placeKey(form.state))
+  return state ? cities[state] : []
+})
 function onStateChange() { form.city = '' }
 
 function resetForm() {
   Object.assign(form, blank())
   step.value = 'mobile'
   known.value = false
+  existingKind.value = ''
+  placeKnown.value = false
   lastVisit.value = ''
   tried.value = false
   nextTick(() => mobileInput.value?.focus())
@@ -247,8 +259,27 @@ async function submitMobile() {
       }, { welcomeBack: l.date })
       return
     }
+    // Name, company and city all known (an earlier visit, else the CRM): check straight in.
+    // A guard who needs to correct them uses the edit button on the visitor afterwards.
+    const ex = res.existing
+    const l = res.status === 'known' ? res.last : null
+    const details = {
+      name: (l?.name1 || ex?.name || '').trim(),
+      company_name: (l?.company_name || ex?.company || '').trim(),
+      state: res.place?.state || l?.state || '',
+      city: res.place?.city || l?.city || '',
+    }
+    if (details.name.length >= 3 && details.company_name.length >= 3 && details.city) {
+      await doCheckIn({ mobile_no: ten, department: form.department, ...details }, { lastVisitOn: l?.date })
+      return
+    }
     tried.value = false
     step.value = 'details'
+    if (ex) {
+      existingKind.value = ex.kind
+      form.name = ex.name || ''
+      form.company_name = ex.company || ''
+    }
     if (res.status === 'known') {
       const l = res.last
       known.value = true
@@ -258,6 +289,12 @@ async function submitMobile() {
       form.state = l.state || ''
       form.city = l.city || ''
       showFlash(`Welcome Back! ${l.name1 || ''}`, `You last visited us on\n${fmtDateTime(l.date)}`, { icon: '👋', tone: 'info' })
+    }
+    // State and city already known (CRM, else an earlier visit): not asked again
+    if (res.place) {
+      placeKnown.value = true
+      form.state = res.place.state || ''
+      form.city = res.place.city
     }
   } catch (err) {
     if (err.network) {
@@ -282,7 +319,7 @@ async function submitDetails() {
   await doCheckIn({ ...form, name: form.name.trim(), company_name: form.company_name.trim() })
 }
 
-async function doCheckIn(payload, { welcomeBack } = {}) {
+async function doCheckIn(payload, { welcomeBack, lastVisitOn } = {}) {
   busy.value = true
   const client_id = newClientId()
   const data = { ...payload, location: auth.location, checked_in_at: toFrappeDatetime() }
@@ -292,6 +329,8 @@ async function doCheckIn(payload, { welcomeBack } = {}) {
       showDialog('Already Checked In', `${res.visitor.name1} is already inside.`)
     } else if (welcomeBack) {
       showFlash(`Welcome Back! ${payload.name}`, `You already visited us today at ${fmtTime(welcomeBack)}`, { icon: '👋', tone: 'info' })
+    } else if (lastVisitOn) {
+      showFlash(`Welcome Back! ${payload.name}`, `You last visited us on\n${fmtDateTime(lastVisitOn)}`, { icon: '👋', tone: 'info' })
     } else {
       showFlash('Thanks for Coming!', payload.name, { icon: '🤝' })
     }

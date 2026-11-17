@@ -2,7 +2,7 @@
  "actions": [],
  "allow_rename": 0,
  "creation": "2026-10-23 00:00:00.000000",
- "modified": "2026-10-23 16:30:00.000000",
+ "modified": "2026-11-13 15:30:00.000000",
  "doctype": "DocType",
  "engine": "InnoDB",
  "module": "Visitor Module",
@@ -16,14 +16,11 @@
   "lead_section",
   "create_crm_lead",
   "lead_temperature",
-  "lead_cb",
-  "kongu_sales_person",
-  "rotn_sales_person",
-  "roi_sales_person",
   "territory_section",
-  "kongu_cities",
+  "default_territory",
   "territory_cb",
-  "rotn_states",
+  "home_state",
+  "home_state_zones",
   "department_section",
   "department_rules",
   "whatsapp_section",
@@ -72,47 +69,33 @@
    "default": "Hot"
   },
   {
-   "fieldname": "lead_cb",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "kongu_sales_person",
-   "fieldtype": "Link",
-   "label": "KONGU Head",
-   "options": "Sales Person"
-  },
-  {
-   "fieldname": "rotn_sales_person",
-   "fieldtype": "Link",
-   "label": "ROTN + Kerala Head",
-   "options": "Sales Person"
-  },
-  {
-   "fieldname": "roi_sales_person",
-   "fieldtype": "Link",
-   "label": "ROI Head",
-   "options": "Sales Person"
-  },
-  {
    "fieldname": "territory_section",
    "fieldtype": "Section Break",
-   "label": "Territory Zones"
+   "label": "Territory",
+   "description": "A visitor's territory comes from CRM Territory: the one named like the city, else like the state. Add towns that are not districts there, under their district or zone."
   },
   {
-   "fieldname": "kongu_cities",
-   "fieldtype": "Small Text",
-   "label": "KONGU Cities",
-   "description": "One per line. A Tamil Nadu visitor from one of these cities is KONGU. Spelling variants (Tirupur / Thirupur / Tiruppur) match automatically."
+   "fieldname": "default_territory",
+   "fieldtype": "Link",
+   "label": "Default Territory",
+   "options": "CRM Territory",
+   "description": "For a visitor whose city and state are not in CRM Territory."
   },
   {
    "fieldname": "territory_cb",
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "rotn_states",
+   "fieldname": "home_state",
+   "fieldtype": "Data",
+   "label": "Home State",
+   "description": "The state of the districts under the Home State Zones (for the gate's City dropdown)."
+  },
+  {
+   "fieldname": "home_state_zones",
    "fieldtype": "Small Text",
-   "label": "ROTN States",
-   "description": "One per line. Any other city in these states is ROTN. Everything else is ROI."
+   "label": "Home State Zones",
+   "description": "One CRM Territory zone per line (for example KONGU, ROTN): the districts directly under them are in the Home State."
   },
   {
    "fieldname": "department_section",

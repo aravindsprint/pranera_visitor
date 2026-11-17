@@ -9,8 +9,6 @@ Not seeded on purpose:
 """
 import frappe
 
-from pranera_visitor.patches.v1_1.add_kongu_towns import KONGU_CITIES
-ROTN_STATES = ["Tamil Nadu", "Kerala"]
 
 REMARKS = [
 	"Swatch Book Given", "Sample Ordered", "Sample Purchased", "Order Confirmed",
@@ -32,16 +30,11 @@ def execute():
 	frappe.reload_doc("visitor_module", "doctype", "visitor_settings")
 
 	s = frappe.get_single("Visitor Settings")
-	if s.kongu_cities or s.department_rules:
+	if s.department_rules:
 		return  # already configured
 
 	s.create_crm_lead = 1
 	s.lead_temperature = "Hot"
-	s.kongu_sales_person = _sp("Mahendran K")
-	s.rotn_sales_person = _sp("Vijay Ram")
-	s.roi_sales_person = _sp("Bhuvnesh Kumar")
-	s.kongu_cities = "\n".join(KONGU_CITIES)
-	s.rotn_states = "\n".join(ROTN_STATES)
 
 	if _sp("Vinoth Kumar"):
 		s.append("department_rules", {
