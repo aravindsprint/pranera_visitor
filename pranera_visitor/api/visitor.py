@@ -225,8 +225,9 @@ def _known_place(ten, existing=None, rows=None) -> tuple[str, str]:
 
 
 def _checkin_time(client_time):
-	"""Offline check-ins replay later — keep the time the guard actually
-	recorded, as long as it's plausible (last 24h, not in the future)."""
+	"""Offline check-ins / exits replay later (after the network or a fresh
+	login comes back) — keep the time the guard actually recorded, as long as
+	it's plausible (last 7 days, not in the future)."""
 	now = now_datetime()
 	if not client_time:
 		return now
@@ -234,7 +235,7 @@ def _checkin_time(client_time):
 		t = get_datetime(client_time)
 	except Exception:
 		return now
-	if t > add_to_date(now, minutes=5) or t < add_to_date(now, hours=-24):
+	if t > add_to_date(now, minutes=5) or t < add_to_date(now, days=-7):
 		return now
 	return min(t, now)
 
@@ -332,9 +333,10 @@ def get_active_visitors(location=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def mark_exit(name):
+def mark_exit(name, exited_at=None):
 	"""Exit = out Yes + out_date + duration, then submit (same as the Node
-	PUT with docstatus 1). Calling it twice is harmless."""
+	PUT with docstatus 1). Calling it twice is harmless. `exited_at` is the
+	device time of an exit that was queued offline."""
 	_require_gate()
 	doc = frappe.get_doc(DT, name)
 	_check_location(doc)
@@ -342,7 +344,9 @@ def mark_exit(name):
 		return {"status": "already_exited", "visitor": _row(doc.as_dict())}
 	if doc.docstatus == 2:
 		frappe.throw(_("This visit was cancelled"))
-	now = now_datetime()
+	now = _checkin_time(exited_at)
+	if doc.date and now < get_datetime(doc.date):
+		now = now_datetime()
 	doc.out = "Yes"
 	doc.out_date = now
 	doc.duration = duration_since(doc.date, now)

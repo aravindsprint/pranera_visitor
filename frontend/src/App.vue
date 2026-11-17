@@ -8,9 +8,15 @@
       </div>
     </transition>
     <transition name="banner">
-      <div v-if="isOnline && (isSyncing || pendingCount)" class="status-banner status-banner--sync">
+      <div v-if="isOnline && !authRequired && (isSyncing || pendingCount)" class="status-banner status-banner--sync">
         <span class="status-banner__spinner"></span>
         <span>Syncing {{ pendingCount }} offline {{ pendingCount === 1 ? 'entry' : 'entries' }}…</span>
+      </div>
+    </transition>
+    <transition name="banner">
+      <div v-if="authRequired" class="status-banner status-banner--auth">
+        <span>🔒 Session expired — log in again<template v-if="pendingCount"> to sync {{ pendingCount }} saved {{ pendingCount === 1 ? 'entry' : 'entries' }}</template>. Entries stay saved on this device.</span>
+        <button class="status-banner__btn" @click="goLogin">Log in</button>
       </div>
     </transition>
     <transition name="banner">
@@ -27,7 +33,10 @@
           {{ f.payload?.mobile_no || '' }}
           <div class="failed-item__err">{{ f.error }}</div>
         </div>
-        <button class="btn btn-ghost" @click="dismissFailed(f.id)">Dismiss</button>
+        <div class="failed-item__actions">
+          <button class="btn btn-ghost" @click="retryFailed(f.id)">Retry</button>
+          <button class="btn btn-ghost" @click="dismissFailed(f.id)">Dismiss</button>
+        </div>
       </div>
     </div>
 
@@ -40,9 +49,18 @@
 import { ref, onMounted } from 'vue'
 import FlashMessage from '@/components/FlashMessage.vue'
 import { useAuthStore } from '@/stores/auth'
-import { useSync, isOnline, isSyncing, pendingCount, failedItems, dismissFailed } from '@/composables/useSync'
+import { useRouter, useRoute } from 'vue-router'
+import { useSync, isOnline, isSyncing, pendingCount, failedItems, authRequired, dismissFailed, retryFailed } from '@/composables/useSync'
 import { initCSRF, isLoggedIn } from '@/api/frappe'
 useSync()
+
+const router = useRouter()
+const route = useRoute()
+function goLogin() {
+  auth.refreshSession()   // window.__FRAPPE_SESSION__.user is Guest now
+  const redirect = route.path.endsWith('/login') ? undefined : route.fullPath
+  router.push({ path: '/visitor-app/login', query: redirect ? { redirect } : {} })
+}
 
 const showFailed = ref(false)
 
@@ -425,4 +443,6 @@ html, body, #app { overflow-x: hidden; max-width: 100vw; }
 .failed-list { background: #fffbeb; border-bottom: 1px solid #fde68a; padding: 8px 16px; }
 .failed-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 0; font-size: 13px; }
 .failed-item__err { color: var(--red-600); font-size: 12px; margin-top: 2px; }
+.failed-item__actions { display: flex; gap: 6px; flex-shrink: 0; }
+.status-banner--auth { background: var(--red-600); color: #fff; flex-wrap: wrap; text-align: center; }
 </style>

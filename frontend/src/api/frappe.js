@@ -77,12 +77,41 @@ function extractServerError(data, fallback = 'Request failed') {
 }
 
 export class ApiError extends Error {
-  constructor(message, { status = 0, network = false } = {}) {
+  constructor(message, { status = 0, network = false, auth = false } = {}) {
     super(message)
     this.status = status
     // true = the request never got an answer (offline / timeout) → safe to queue
     this.network = network
+    // true = the server treated us as Guest (session expired / logged out on
+    // the server). The request itself was fine — keep it and log in again.
+    this.auth = auth
   }
+}
+
+// Frappe answers an expired session with 403 PermissionError "You are not
+// permitted to access this resource. Login to access" + "not whitelisted"
+// (the session silently became Guest), or 401 / SessionExpired.
+const AUTH_ERROR_RE = /login to access|not whitelisted|session expired|sessionexpired/i
+
+export function isAuthErrorText(text) {
+  return AUTH_ERROR_RE.test(String(text || ''))
+}
+
+function isAuthFailure(res, data, message) {
+  if (res.status === 401) return true
+  if (data?.exc_type === 'SessionExpired') return true
+  return res.status === 403 && isAuthErrorText(message)
+}
+
+// Tell the app the server no longer knows us, so it can mark the session as
+// Guest and send the guard to the login page. Fired at most once per page.
+let _authEventFired = false
+function signalAuthRequired() {
+  resetCSRF()
+  if (window.__FRAPPE_SESSION__) window.__FRAPPE_SESSION__.user = 'Guest'
+  if (_authEventFired) return
+  _authEventFired = true
+  try { window.dispatchEvent(new Event('visitor:auth-required')) } catch { /* ignore */ }
 }
 
 async function handle(res) {
@@ -91,7 +120,10 @@ async function handle(res) {
   try { data = await res.json() } catch { /* non-JSON (gateway error page) */ }
   if (!res.ok || data.exc) {
     const gateway = [502, 503, 504].includes(res.status)
-    throw new ApiError(extractServerError(data, res.statusText || 'Request failed'), { status: res.status, network: gateway })
+    const message = extractServerError(data, res.statusText || 'Request failed')
+    const auth = isAuthFailure(res, data, message)
+    if (auth) signalAuthRequired()
+    throw new ApiError(auth ? 'Session expired — please log in again' : message, { status: res.status, network: gateway, auth })
   }
   return data.message
 }
@@ -141,7 +173,7 @@ export const getBoot            = ()                        => get(`${V}.get_boo
 export const lookupMobile       = (mobile_no)               => get(`${V}.lookup_mobile`, { mobile_no })
 export const getActiveVisitors  = (location)                => get(`${V}.get_active_visitors`, { location })
 export const checkIn            = (data, client_id)         => call(`${V}.check_in`, { data, client_id })
-export const markExit           = (name)                    => call(`${V}.mark_exit`, { name })
+export const markExit           = (name, exited_at)         => call(`${V}.mark_exit`, { name, exited_at })
 export const updateVisitor      = (name, data, linkContact) => call(`${V}.update_visitor`, { name, data, link_contact_to_customer: linkContact ? 1 : 0 })
 export const lookupCustomer     = (name)                    => get(`${V}.lookup_customer`, { name })
 export const createCustomer     = (name, data)              => call(`${V}.create_customer`, { name, data })

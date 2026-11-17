@@ -337,7 +337,9 @@ async function doCheckIn(payload, { welcomeBack, lastVisitOn } = {}) {
     resetForm()
     loadActive()
   } catch (err) {
-    if (err.network) {
+    // Offline, or the session expired mid-shift: keep the visit on the
+    // device; it replays (with its original time) after the network / login.
+    if (err.network || err.auth) {
       await enqueue('check_in', data, client_id)
       active.value = [{
         _pending: true, client_id, name1: data.name, company_name: data.company_name,
@@ -345,7 +347,7 @@ async function doCheckIn(payload, { welcomeBack, lastVisitOn } = {}) {
         location: data.location, date: data.checked_in_at,
       }, ...active.value]
       persistActive()
-      showFlash('Saved on this device', `${payload.name}\nIt will sync when the network is back.`, { icon: '📥', tone: 'warn', ms: 2500 })
+      showFlash('Saved on this device', `${payload.name}\n${err.auth ? 'Log in again to sync it.' : 'It will sync when the network is back.'}`, { icon: '📥', tone: 'warn', ms: 2500 })
       resetForm()
     } else {
       showDialog('Could not check in', err.message)
@@ -418,7 +420,7 @@ async function confirmExit() {
     if (v._pending) {
       // Not synced yet — queue the exit behind its check-in.
       const item = await db.queue.where('client_id').equals(v.client_id).first()
-      await enqueue('exit', { check_in_client_id: v.client_id, check_in_payload: item?.payload })
+      await enqueue('exit', { check_in_client_id: v.client_id, check_in_payload: item?.payload, exited_at: toFrappeDatetime() })
       drop()
       flushQueue()
     } else {
@@ -427,10 +429,10 @@ async function confirmExit() {
     }
     showFlash('Thanks for Visiting — Come Again!', v.name1, { icon: '👋' })
   } catch (err) {
-    if (err.network) {
-      await enqueue('exit', { name: v.name, mobile_no: v.mobile_no })
+    if (err.network || err.auth) {
+      await enqueue('exit', { name: v.name, mobile_no: v.mobile_no, exited_at: toFrappeDatetime() })
       drop()
-      showFlash('Exit saved on this device', `${v.name1}\nIt will sync when the network is back.`, { icon: '📥', tone: 'warn', ms: 2500 })
+      showFlash('Exit saved on this device', `${v.name1}\n${err.auth ? 'Log in again to sync it.' : 'It will sync when the network is back.'}`, { icon: '📥', tone: 'warn', ms: 2500 })
     } else {
       showDialog('Could not mark exit', err.message)
     }
