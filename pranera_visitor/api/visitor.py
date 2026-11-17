@@ -177,7 +177,8 @@ def lookup_mobile(mobile_no, location=None):
 		LIST_FIELDS + ["creation"], order_by="creation desc", limit=10,
 	)
 	existing = crm.existing_visitor(ten)
-	state, city = _known_place(ten, existing, rows)
+	# `or {}`: a new number's None means "looked up, nothing found", not "look it up again"
+	state, city = _known_place(ten, existing or {}, rows)
 	place = {"state": state, "city": city} if city else None
 	if not rows:
 		return {
