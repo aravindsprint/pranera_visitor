@@ -189,6 +189,9 @@ def known_place(customer=None, lead_territory=None) -> tuple[str, str]:
 	names = {place_key(n): n for n in tree if _is_place(tree, n, is_state)}
 	candidates = []  # (place text, state written with it)
 	if customer:
+		# Customer.territory is an ERPNext Territory name, matched here against CRM Territory names: this
+		# works because both trees name districts alike (Tiruppur, Erode). A territory that is a whole
+		# state or "All Territories" matches no district and falls through to the address city below.
 		candidates.append((frappe.db.get_value("Customer", customer, "territory"), ""))
 		addresses = frappe.get_all(
 			"Dynamic Link",
