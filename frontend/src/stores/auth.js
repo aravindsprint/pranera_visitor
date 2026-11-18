@@ -4,7 +4,7 @@
 // user's gate (HO / JV) in Visitor Settings → Gate Users.
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { getBoot, ensureCSRF, resetCSRF } from '@/api/frappe'
+import { getBoot, ensureCSRF, resetCSRF, setDeviceToken, clearDeviceToken } from '@/api/frappe'
 import { cacheGet, cacheSet } from '@/db'
 
 const LOC_KEY = 'VISITOR_ADMIN_LOCATION'
@@ -57,6 +57,21 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  // Right after login: keep an API token on this device so a dropped Frappe
+  // session (e.g. during `bench migrate`) doesn't throw the guard out.
+  // Best-effort — without it the app still works on the cookie session.
+  async function fetchDeviceToken() {
+    try {
+      resetCSRF()
+      const token = await ensureCSRF()   // fresh session → fresh CSRF token
+      const r = await fetch('/api/method/pranera_visitor.api.visitor.get_device_token', {
+        method: 'POST', headers: { 'X-Frappe-CSRF-Token': token }, credentials: 'include'
+      })
+      const d = await r.json().catch(() => ({}))
+      setDeviceToken(r.ok ? d.message : null)
+    } catch { clearDeviceToken() }
+  }
+
   async function login(email, password) {
     loading.value = true
     error.value = ''
@@ -76,6 +91,7 @@ export const useAuthStore = defineStore('auth', () => {
         } catch { /* keep default */ }
         throw new Error(msg)
       }
+      await fetchDeviceToken()
       return true
     } catch (err) {
       error.value = err.message || 'Login failed'
@@ -92,6 +108,7 @@ export const useAuthStore = defineStore('auth', () => {
         method: 'POST', headers: { 'X-Frappe-CSRF-Token': token }, credentials: 'include'
       })
     } catch (_) { /* still clear local state */ }
+    clearDeviceToken()
     resetCSRF()
     boot.value = null
     if (window.__FRAPPE_SESSION__) window.__FRAPPE_SESSION__.user = 'Guest'

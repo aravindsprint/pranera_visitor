@@ -38,11 +38,52 @@ export function resetCSRF() {
   window.csrf_token = ''
 }
 
+// ── Device token ──────────────────────────────────────────────────────────
+// The gate tablet keeps the guard's API key:secret (from get_device_token)
+// and sends it on every call. Frappe drops cookie sessions now and then —
+// every `bench migrate` logs out whoever is polling at that moment — and
+// without this the gate fell to "Login to access … not whitelisted".
+const TOKEN_KEY = 'VISITOR_DEVICE_TOKEN'
+
+export function getDeviceToken() {
+  try {
+    const t = JSON.parse(localStorage.getItem(TOKEN_KEY) || 'null')
+    return t && t.user && t.token ? t : null
+  } catch { return null }
+}
+
+export function setDeviceToken(t) {
+  try {
+    if (t && t.user && t.token) localStorage.setItem(TOKEN_KEY, JSON.stringify({ user: t.user, token: t.token }))
+    else localStorage.removeItem(TOKEN_KEY)
+  } catch { /* storage unavailable */ }
+}
+
+export function clearDeviceToken() { setDeviceToken(null) }
+
+function cookieUser() {
+  const u = decodeURIComponent(getCookieValue('user_id') || '')
+  return u && u !== 'Guest' ? u : ''
+}
+
+// Who this device is working as: the cookie session if there is one,
+// otherwise the stored token's user. A different user logged in through
+// the cookie (e.g. an admin in Desk on the same browser) wins and the old
+// token is dropped — Frappe rejects a token for another user than the session.
+export function sessionUser() {
+  const c = cookieUser()
+  const t = getDeviceToken()
+  if (c && t && t.user !== c) { clearDeviceToken(); return c }
+  return c || t?.user || 'Guest'
+}
+
+function authHeaders() {
+  const t = getDeviceToken()
+  return t ? { Authorization: `token ${t.token}` } : {}
+}
+
 export async function initCSRF() {
-  window.__FRAPPE_SESSION__ = {
-    user: decodeURIComponent(getCookieValue('user_id') || '') || 'Guest',
-    base_url: ''
-  }
+  window.__FRAPPE_SESSION__ = { user: sessionUser(), base_url: '' }
   await ensureCSRF()
   window.__FRAPPE_SESSION__.csrf_token = _csrf
 }
@@ -108,20 +149,24 @@ function isAuthFailure(res, data, message) {
 let _authEventFired = false
 function signalAuthRequired() {
   resetCSRF()
+  // The token itself was refused (secret rotated / user disabled) — drop it.
+  clearDeviceToken()
   if (window.__FRAPPE_SESSION__) window.__FRAPPE_SESSION__.user = 'Guest'
   if (_authEventFired) return
   _authEventFired = true
   try { window.dispatchEvent(new Event('visitor:auth-required')) } catch { /* ignore */ }
 }
 
-async function handle(res) {
+async function handle(res, sentToken = false) {
   signalServerReachable(res)
   let data = {}
   try { data = await res.json() } catch { /* non-JSON (gateway error page) */ }
   if (!res.ok || data.exc) {
     const gateway = [502, 503, 504].includes(res.status)
     const message = extractServerError(data, res.statusText || 'Request failed')
-    const auth = isAuthFailure(res, data, message)
+    // With a token, a 403 "not permitted" is a real permission error, not
+    // a lost session — only a 401 means the token was refused.
+    const auth = sentToken ? res.status === 401 : isAuthFailure(res, data, message)
     if (auth) signalAuthRequired()
     throw new ApiError(auth ? 'Session expired — please log in again' : message, { status: res.status, network: gateway, auth })
   }
@@ -140,30 +185,32 @@ function encodeArgs(args) {
 // Writes — POST with CSRF.
 export async function call(method, args = {}) {
   const token = await ensureCSRF()
+  const auth = authHeaders()
   let res
   try {
     res = await fetch(`/api/method/${method}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Frappe-CSRF-Token': token },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Frappe-CSRF-Token': token, ...auth },
       body: encodeArgs(args).toString(),
       credentials: 'include'
     })
   } catch (e) {
     throw new ApiError('No connection to the server', { network: true })
   }
-  return handle(res)
+  return handle(res, !!auth.Authorization)
 }
 
 // Reads — GET, so the service worker's NetworkFirst cache can serve the
 // last answer when the gate's Wi-Fi drops.
 export async function get(method, args = {}) {
+  const auth = authHeaders()
   let res
   try {
-    res = await fetch(`/api/method/${method}?${encodeArgs(args)}`, { credentials: 'include' })
+    res = await fetch(`/api/method/${method}?${encodeArgs(args)}`, { headers: auth, credentials: 'include' })
   } catch (e) {
     throw new ApiError('No connection to the server', { network: true })
   }
-  return handle(res)
+  return handle(res, !!auth.Authorization)
 }
 
 // ── Visitor API ───────────────────────────────────────────────────────────

@@ -109,6 +109,39 @@ def get_csrf_token():
 	return frappe.sessions.get_csrf_token()
 
 
+@frappe.whitelist(methods=["POST"])
+def get_device_token():
+	"""API key:secret for the logged-in gate guard, stored on the gate tablet.
+
+	The tablet then authenticates every call with `Authorization: token ...`
+	instead of only the session cookie. Frappe drops the cookie session now and
+	then — most visibly while `bench migrate` runs, when every user polling at
+	that moment is logged out — and the gate then showed "Login to access ...
+	not whitelisted" until someone typed the password again. A token survives
+	that.
+
+	The existing secret is reused (not regenerated) so a second tablet for the
+	same user keeps working. Not issued to System Managers: an admin key should
+	never sit in a shared tablet's browser storage.
+	"""
+	_require_gate()
+	user = frappe.session.user
+	if user == "Administrator" or "System Manager" in frappe.get_roles():
+		return None
+
+	from frappe.utils.password import get_decrypted_password, set_encrypted_password
+
+	api_key = frappe.db.get_value("User", user, "api_key")
+	api_secret = get_decrypted_password("User", user, "api_secret", raise_exception=False) if api_key else None
+	if not api_key:
+		api_key = frappe.generate_hash(length=15)
+		frappe.db.set_value("User", user, "api_key", api_key, update_modified=False)
+	if not api_secret:
+		api_secret = frappe.generate_hash(length=15)
+		set_encrypted_password("User", user, api_secret, "api_secret")
+	return {"user": user, "token": f"{api_key}:{api_secret}"}
+
+
 @frappe.whitelist()
 def get_boot():
 	_require_gate()
