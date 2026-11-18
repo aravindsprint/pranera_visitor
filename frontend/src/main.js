@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
+import { sessionUser } from '@/api/frappe'
 import 'primeicons/primeicons.css'
 
 function getCookie(name) {
@@ -9,7 +10,7 @@ function getCookie(name) {
 }
 
 window.__FRAPPE_SESSION__ = {
-  user: decodeURIComponent(getCookie('user_id') || 'Guest'),
+  user: sessionUser(),
   csrf_token: getCookie('csrftoken'),
   base_url: ''
 }

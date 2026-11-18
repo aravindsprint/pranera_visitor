@@ -397,7 +397,7 @@ async function loadActive() {
     if (err.network) {
       const cached = await cacheGet(cacheKey())
       if (cached) active.value = cached
-    } else {
+    } else if (!err.auth) {   // lost session: the app banner asks for a login
       showDialog('Could not load visitors', err.message)
     }
   } finally {
