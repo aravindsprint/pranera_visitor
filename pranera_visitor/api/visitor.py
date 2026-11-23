@@ -177,7 +177,8 @@ def lookup_mobile(mobile_no, location=None):
 		LIST_FIELDS + ["creation"], order_by="creation desc", limit=10,
 	)
 	existing = crm.existing_visitor(ten)
-	state, city = _known_place(ten, existing, rows)
+	# `or {}`: a new number's None means "looked up, nothing found", not "look it up again"
+	state, city = _known_place(ten, existing or {}, rows)
 	place = {"state": state, "city": city} if city else None
 	if not rows:
 		return {
@@ -309,7 +310,7 @@ def check_in(data, client_id=None):
 		"city": city,
 		# "" (not None) on purpose: None lets Frappe fill the user/global
 		# default ("All Territories"), which looked like a real value.
-		"territory": link_value_or_none(DT, "territory", zone) or "",
+		"territory": crm.erpnext_territory(zone) or "",
 		"sales_person": "",
 		"id": client_id or f"{ten}-{now_datetime().strftime('%Y%m%d%H%M%S')}",
 		"idx": _unique_idx(),

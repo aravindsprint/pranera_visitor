@@ -2,7 +2,7 @@
  "actions": [],
  "allow_rename": 0,
  "creation": "2026-10-23 00:00:00.000000",
- "modified": "2026-11-13 15:30:00.000000",
+ "modified": "2026-11-17 13:00:00.000000",
  "doctype": "DocType",
  "engine": "InnoDB",
  "module": "Visitor Module",
@@ -21,6 +21,7 @@
   "territory_cb",
   "home_state",
   "home_state_zones",
+  "zone_territories",
   "department_section",
   "department_rules",
   "whatsapp_section",
@@ -96,6 +97,13 @@
    "fieldtype": "Small Text",
    "label": "Home State Zones",
    "description": "One CRM Territory zone per line (for example KONGU, ROTN): the districts directly under them are in the Home State."
+  },
+  {
+   "fieldname": "zone_territories",
+   "fieldtype": "Table",
+   "label": "ERPNext Territory for each zone",
+   "options": "Visitor Territory Map",
+   "description": "Visitor Data's Territory links to ERPNext's Territory list. Add a row only for a CRM zone whose name differs there (for example ROI → Rest of India); a zone with the same name (KONGU, ROTN) needs none."
   },
   {
    "fieldname": "department_section",

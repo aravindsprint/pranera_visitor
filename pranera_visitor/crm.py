@@ -189,6 +189,9 @@ def known_place(customer=None, lead_territory=None) -> tuple[str, str]:
 	names = {place_key(n): n for n in tree if _is_place(tree, n, is_state)}
 	candidates = []  # (place text, state written with it)
 	if customer:
+		# Customer.territory is an ERPNext Territory name, matched here against CRM Territory names: this
+		# works because both trees name districts alike (Tiruppur, Erode). A territory that is a whole
+		# state or "All Territories" matches no district and falls through to the address city below.
 		candidates.append((frappe.db.get_value("Customer", customer, "territory"), ""))
 		addresses = frappe.get_all(
 			"Dynamic Link",
@@ -218,9 +221,9 @@ def latest_lead(ten, with_organization=False):
 	rows = frappe.get_all(
 		"CRM Lead",
 		filters=filters,
-		fields=["name", "first_name", "organization", "custom_temp_organization", "territory"]
+		fields=["name", "first_name", "organization", "custom_temp_organization", "territory", "lead_owner"]
 		if frappe.get_meta("CRM Lead").has_field("custom_temp_organization")
-		else ["name", "first_name", "organization", "territory"],
+		else ["name", "first_name", "organization", "territory", "lead_owner"],
 		order_by="creation desc",
 		limit=1,
 	)
@@ -250,6 +253,20 @@ def existing_visitor(ten) -> dict | None:
 		"state": state,
 		"city": city,
 	}
+
+
+def erpnext_territory(zone):
+	"""Visitor Data's Territory for a CRM zone. The field links to ERPNext's Territory list, which may
+	name a zone differently (CRM "ROI" is ERPNext "Rest of India"): Visitor Settings → ERPNext
+	Territory for each zone pairs them, else the zone's own name is used. None when ERPNext has no
+	such territory."""
+	if not zone:
+		return None
+	mapped = next(
+		(row.erpnext_territory for row in get_settings().get("zone_territories") or [] if row.zone == zone),
+		None,
+	)
+	return link_value_or_none("Visitor Data", "territory", mapped or zone)
 
 
 def sales_person_of_user(user):
@@ -285,9 +302,19 @@ def customer_of_contact(contact):
 
 
 def first_sales_person(customer):
-	return frappe.db.get_value(
-		"Sales Team", {"parenttype": "Customer", "parent": customer}, "sales_person", order_by="idx asc"
-	)
+	"""The customer's first enabled sales person in its Sales Team, or None."""
+	team = frappe.qb.DocType("Sales Team")
+	person = frappe.qb.DocType("Sales Person")
+	rows = (
+		frappe.qb.from_(team)
+		.join(person)
+		.on(person.name == team.sales_person)
+		.select(team.sales_person)
+		.where((team.parenttype == "Customer") & (team.parent == customer) & (person.enabled == 1))
+		.orderby(team.idx)
+		.limit(1)
+	).run(pluck=True)
+	return rows[0] if rows else None
 
 
 def user_of_sales_person(sales_person):
@@ -392,33 +419,92 @@ def create_customer_for_visitor(vd, overrides=None):
 
 
 # ── CRM Lead ─────────────────────────────────────────────────────────────────
+def owner_of_sales_person(sales_person):
+	"""The user who gets a lead for this sales person: their own user, else the user of the nearest
+	parent in the Sales Person tree who has one. None when nobody up the tree has a user."""
+	seen = set()
+	while sales_person and sales_person not in seen:
+		seen.add(sales_person)
+		user = user_of_sales_person(sales_person)
+		if user:
+			return user
+		sales_person = frappe.db.get_value("Sales Person", sales_person, "parent_sales_person")
+	return None
+
+
+def department_rule(department):
+	"""The Visitor Settings → Department Rules row for this department, or None."""
+	department = (department or "").lower()
+	return next(
+		(rule for rule in get_settings().department_rules if (rule.department or "").lower() == department),
+		None,
+	)
+
+
+def rule_owner(rule):
+	"""(lead owner, sales person) that a Department Rule gives. The owner is None when the rule
+	names nobody with a user."""
+	if rule.assign_to == "User" and rule.lead_owner:
+		return rule.lead_owner, sales_person_of_user(rule.lead_owner)
+	if rule.sales_person:
+		return owner_of_sales_person(rule.sales_person), rule.sales_person
+	return None, None
+
+
+def earlier_visit_sales_person(ten, visitor_name):
+	"""The sales person of the visitor's latest earlier visit that has one, or None."""
+	rows = frappe.get_all(
+		"Visitor Data",
+		filters={
+			"mobile_no": ["like", f"%{ten}"],
+			"name": ["!=", visitor_name],
+			"sales_person": ["is", "set"],
+			"docstatus": ["!=", 2],
+		},
+		pluck="sales_person",
+		order_by="creation desc",
+		limit=1,
+	)
+	return rows[0] if rows else None
+
+
 def resolve_lead_owner(vd):
-	"""Who gets the visitor's lead:
-	1. An existing customer (by the visitor's mobile, else by company name) → its first sales
-	   person, when that sales person has a CRM user.
-	2. Otherwise (a new customer, or one without such a sales person): a matching Department Rule in
-	   Visitor Settings, which may also queue a WhatsApp alert.
-	3. Otherwise the Territory Manager in CRM Territory of the visitor's territory (or the first
-	   one set above it).
+	"""Who gets the visitor's lead, and which sales person goes on the visit:
+	1. A Department Rule with Always Use This Rule (for example Garments → one person).
+	2. An existing customer (by the visitor's mobile, else by company name) → its sales person.
+	3. The visitor's latest CRM Lead → its lead owner.
+	4. The visitor's latest earlier visit → its sales person.
+	5. The Department Rule of the visit's department, which may also queue a WhatsApp alert.
+	6. The Territory Manager in CRM Territory of the visitor's territory (or the first one set
+	   above it).
+	A sales person without a user keeps the visit; the lead goes to the nearest parent in the Sales
+	Person tree with a user, else to the Territory Manager.
 	Returns (lead_owner_user, sales_person, whatsapp_number)."""
 	ten = normalize_mobile(vd.mobile_no)
+	rule = department_rule(vd.department)
+	whatsapp = rule.whatsapp_notify if rule else None
+	if rule and rule.always_use:
+		owner, sp = rule_owner(rule)
+		if owner:
+			return owner, sp, whatsapp
+
 	found = find_customer(ten, vd.company_name)
 	sp = found.get("sales_person") if found.get("status") == "found" else None
-	owner = user_of_sales_person(sp)
-	if owner:
-		return owner, sp, None
+	if sp:
+		return owner_of_sales_person(sp) or territory_manager(vd.state, vd.city), sp, None
 
-	whatsapp = None
-	for rule in get_settings().department_rules:
-		if (rule.department or "").lower() == (vd.department or "").lower():
-			whatsapp = rule.whatsapp_notify
-			if rule.assign_to == "User" and rule.lead_owner:
-				return rule.lead_owner, sales_person_of_user(rule.lead_owner), whatsapp
-			if rule.sales_person:
-				owner = user_of_sales_person(rule.sales_person)
-				if owner:
-					return owner, rule.sales_person, whatsapp
-			break
+	lead_owner = (latest_lead(ten) or {}).get("lead_owner")
+	if lead_owner:
+		return lead_owner, sales_person_of_user(lead_owner), None
+
+	sp = earlier_visit_sales_person(ten, vd.name)
+	if sp:
+		return owner_of_sales_person(sp) or territory_manager(vd.state, vd.city), sp, None
+
+	if rule:
+		owner, sp = rule_owner(rule)
+		if owner:
+			return owner, sp, whatsapp
 
 	owner = territory_manager(vd.state, vd.city)
 	return owner, sales_person_of_user(owner), whatsapp
@@ -526,7 +612,7 @@ def _insert_lead(vd, s, ten, first_name):
 	if sales_person and not vd.get("sales_person") and frappe.db.exists("Sales Person", sales_person):
 		updates["sales_person"] = sales_person
 	if not vd.get("territory"):
-		terr = link_value_or_none("Visitor Data", "territory", zone)
+		terr = erpnext_territory(zone)
 		if terr:
 			updates["territory"] = terr
 	frappe.db.set_value("Visitor Data", vd.name, updates, update_modified=False)
