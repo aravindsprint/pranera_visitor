@@ -265,7 +265,8 @@ async function submitMobile() {
     const l = res.status === 'known' ? res.last : null
     const details = {
       name: (l?.name1 || ex?.name || '').trim(),
-      company_name: (l?.company_name || ex?.company || '').trim(),
+      // an existing customer's or lead's organization beats a name typed at an earlier visit
+      company_name: (ex?.organization || l?.company_name || ex?.company || '').trim(),
       state: res.place?.state || l?.state || '',
       city: res.place?.city || l?.city || '',
     }
@@ -285,7 +286,7 @@ async function submitMobile() {
       known.value = true
       lastVisit.value = l.date
       form.name = l.name1 || ''
-      form.company_name = l.company_name || ''
+      form.company_name = ex?.organization || l.company_name || ''
       form.state = l.state || ''
       form.city = l.city || ''
       showFlash(`Welcome Back! ${l.name1 || ''}`, `You last visited us on\n${fmtDateTime(l.date)}`, { icon: '👋', tone: 'info' })
