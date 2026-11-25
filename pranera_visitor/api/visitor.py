@@ -285,6 +285,9 @@ def check_in(data, client_id=None):
 		frappe.throw(_("Name should be at least 3 characters"))
 	if not company or len(company) < 3:
 		frappe.throw(_("Company Name should be at least 3 characters"))
+	# An existing customer or lead keeps its real organization, as its CRM Lead does: the form
+	# carries forward the name typed at an earlier visit, which may be wrong.
+	company = crm.known_organization(ten, company) or company
 	if department not in DEPARTMENTS:
 		frappe.throw(_("Pick a department"))
 	if not city:

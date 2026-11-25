@@ -581,7 +581,7 @@ def _insert_lead(vd, s, ten, first_name):
 	# Setter), so the lead is created without the mandatory check; Desk still
 	# asks for it on the next manual save, which is the intended prompt.
 	company = (vd.company_name or "").strip().upper()
-	organization = _known_organization(ten, vd.company_name)
+	organization = known_organization(ten, vd.company_name)
 	if organization:
 		# an existing customer or lead: its real organization, not the typed name
 		lead.organization = organization
@@ -619,7 +619,7 @@ def _insert_lead(vd, s, ten, first_name):
 	return lead.name, whatsapp
 
 
-def _known_organization(ten, company_name):
+def known_organization(ten, company_name):
 	"""The organization of an existing customer (by mobile, else by company name) or of the
 	visitor's earlier lead, for CRM Lead → Organization. None for a new visitor. When Organization
 	is a link (Frappe CRM's default), only an existing CRM Organization is used."""
